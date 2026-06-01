@@ -1,6 +1,7 @@
 import "server-only";
 import OpenAI from "openai";
-import { buildReferenceContext, matchSymbols } from "./dream-symbols";
+import { matchSymbols } from "./dream-symbols";
+import { buildRagContext, retrieve } from "./rag";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -42,7 +43,8 @@ export async function interpretDream(
   history: ChatMessage[],
 ): Promise<string> {
   const lastUser = [...history].reverse().find((m) => m.role === "user");
-  const reference = lastUser ? buildReferenceContext(lastUser.content) : "";
+  // Retrieve grounding references from the Ibn-Sirin corpus (RAG).
+  const reference = lastUser ? buildRagContext(lastUser.content) : "";
 
   const client = getClient();
   if (!client) {
@@ -158,22 +160,23 @@ export async function generateOverallSummary(
 // ---------------------------------------------------------------------------
 
 function fallbackInterpretation(text: string): string {
-  const matched = matchSymbols(text);
-  if (matched.length === 0) {
+  // Pull the most relevant classical references straight from the corpus.
+  const hits = retrieve(text, 6);
+  if (hits.length === 0) {
     return (
-      "لم يتم ضبط مزوّد ذكاء اصطناعي بعد، لكن يمكنني مساعدتك من قاعدة الرموز الكلاسيكية.\n\n" +
-      "لم أتعرّف على رموز معروفة في هذا النص. حاول وصف الحلم بتفاصيل أكثر (ماذا رأيت؟ ما شعورك؟ من كان معك؟)، أو اضبط مفتاح الـ AI في إعدادات البيئة للحصول على تفسير أعمق."
+      "لم يتم ضبط مزوّد ذكاء اصطناعي بعد، لكن يمكنني مساعدتك من مراجع تفسير الأحلام الكلاسيكية.\n\n" +
+      "لم أتعرّف على رموز معروفة في هذا النص. حاول وصف الحلم بتفاصيل أكثر (ماذا رأيت؟ ما شعورك؟ من كان معك؟)، أو اضبط مفتاح الـ AI في إعدادات البيئة للحصول على تفسير تفاعلي أعمق."
     );
   }
 
-  const body = matched
-    .map((m) => `• **${m.key}**: ${m.interpretation}`)
+  const body = hits
+    .map((h) => `• **${h.symbol}**: ${h.text}`)
     .join("\n\n");
 
   return (
-    "بناءً على كتب تفسير الأحلام الكلاسيكية، هذه دلالات الرموز التي وردت في حلمك:\n\n" +
+    "بناءً على مراجع تفسير الأحلام لابن سيرين، هذه أقرب الدلالات لرموز حلمك:\n\n" +
     body +
-    "\n\n(ملاحظة: لم يُضبط مزوّد ذكاء اصطناعي بعد، لذا هذا تفسير مبدئي من قاعدة الرموز. اضبط `AI_API_KEY` للحصول على تفسير تفاعلي أعمق.)\n\nوتذكّر أن تفسير الأحلام ظنٌّ واجتهاد، والخير فيما اختاره الله."
+    "\n\n(ملاحظة: لم يُضبط مزوّد ذكاء اصطناعي بعد، لذا هذا استرجاع مباشر من المراجع. اضبط `AI_API_KEY` للحصول على تفسير تفاعلي يربط الرموز بحالتك.)\n\nوتذكّر أن تفسير الأحلام ظنٌّ واجتهاد، والخير فيما اختاره الله."
   );
 }
 

@@ -1,4 +1,5 @@
 import symbolsData from "@/data/dream-symbols.json";
+import { normalizeArabic as normalize, tokenMatches } from "./arabic";
 
 export interface DreamSymbol {
   key: string;
@@ -8,43 +9,6 @@ export interface DreamSymbol {
 }
 
 export const SYMBOLS = symbolsData as DreamSymbol[];
-
-/** Normalize Arabic text: strip diacritics + unify alef/ya/ta-marbuta. */
-function normalize(text: string): string {
-  return text
-    .replace(/[ً-ْٰ]/g, "") // tashkeel
-    .replace(/[أإآٱ]/g, "ا") // hamza alefs -> alef
-    .replace(/ى/g, "ي") // alef maqsura -> ya
-    .replace(/ة/g, "ه") // ta marbuta -> ha
-    .replace(/[^؀-ۿ\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-// Leading clitics in Arabic (conjunctions/prepositions + definite article),
-// longest first so we strip the biggest matching cluster.
-const PREFIXES = ["وال", "فال", "بال", "كال", "لل", "ال", "و", "ف", "ب", "ك", "ل"];
-
-function stripPrefix(token: string): string {
-  for (const p of PREFIXES) {
-    if (token.startsWith(p) && token.length - p.length >= 2) {
-      return token.slice(p.length);
-    }
-  }
-  return token;
-}
-
-/** True if a single-word term matches a single text token, tolerating
- *  attached clitics and short inflectional suffixes (ـاً، ـها، ـون…). */
-function tokenMatches(token: string, term: string): boolean {
-  if (token === term) return true;
-  const t = stripPrefix(token);
-  const r = stripPrefix(term);
-  if (t === r) return true;
-  // Allow inflectional suffixes after the stem (cap the extra length so we
-  // don't match unrelated longer words that merely share a prefix).
-  return r.length >= 3 && t.startsWith(r) && t.length - r.length <= 3;
-}
 
 /**
  * Scan free-text dream content and return the classical Islamic symbol

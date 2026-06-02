@@ -49,6 +49,7 @@ openssl rand -base64 48      # => AUTH_SECRET
 | `AI_MAX_TOKENS` | `1200` |
 | `AI_DISABLE_REASONING` | `true` (لموديلات reasoning المجانية) |
 | `AI_EMBED_MODEL` | *(اختياري)* `nvidia/llama-nemotron-embed-vl-1b-v2:free` لتفعيل الاسترجاع الدلالي |
+| `ADMIN_EMAILS` | *(اختياري)* إيميلك للوصول للوحة `/admin` (عرض وإدارة كل المستخدمين) |
 
 > بدون `AI_API_KEY` يعمل التطبيق بوضع fallback (استرجاع مباشر من المراجع).
 > بدون `AI_EMBED_MODEL` يبقى الاسترجاع لفظياً (المتجهات المضغوطة مُضمّنة في الريبو).

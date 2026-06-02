@@ -90,4 +90,20 @@ export async function getSession(): Promise<SessionPayload | null> {
   return verifySessionToken(token);
 }
 
+/** True if the email is listed in the ADMIN_EMAILS env var (comma-separated). */
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const list = (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return list.includes(email.toLowerCase());
+}
+
+/** The current session, but only if it belongs to an admin; else null. */
+export async function getAdminSession(): Promise<SessionPayload | null> {
+  const session = await getSession();
+  return session && isAdminEmail(session.email) ? session : null;
+}
+
 export { COOKIE_NAME };

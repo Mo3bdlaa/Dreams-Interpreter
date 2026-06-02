@@ -6,7 +6,7 @@ import { api } from "@/lib/client";
 import { ThemeToggle } from "./ThemeToggle";
 import { clearPin, getPinHash, setPin } from "@/lib/pin";
 
-export function TopBar({ name }: { name: string }) {
+export function TopBar({ name, isAdmin = false }: { name: string; isAdmin?: boolean }) {
   const router = useRouter();
 
   async function logout() {
@@ -53,6 +53,14 @@ export function TopBar({ name }: { name: string }) {
             >
               📅 التقويم
             </Link>
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="rounded-lg px-3 py-1.5 text-night-100/80 hover:bg-white/10"
+              >
+                🛡️ الأدمن
+              </Link>
+            )}
           </nav>
         </div>
         <div className="flex items-center gap-2 text-sm">

@@ -7,6 +7,9 @@ export interface DreamSummaryRow {
   mood: string | null;
   symbols: string[];
   summary: string | null;
+  kind: string | null;
+  shareToken: string | null;
+  deletedAt: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -69,8 +72,34 @@ export const api = {
       body: JSON.stringify(body),
     }).then(handle),
 
-  deleteDream: (id: string) =>
-    fetch(`/api/dreams/${id}`, { method: "DELETE" }).then(handle),
+  deleteDream: (id: string, hard = false) =>
+    fetch(`/api/dreams/${id}${hard ? "?hard=1" : ""}`, {
+      method: "DELETE",
+    }).then(handle),
+
+  restoreDream: (id: string) =>
+    fetch(`/api/dreams/${id}/restore`, { method: "POST" }).then(handle),
+
+  listTrash: () =>
+    fetch("/api/dreams/trash").then((r) =>
+      handle<{ dreams: DreamSummaryRow[] }>(r),
+    ),
+
+  shareDream: (id: string) =>
+    fetch(`/api/dreams/${id}/share`, { method: "POST" }).then((r) =>
+      handle<{ token: string }>(r),
+    ),
+
+  unshareDream: (id: string) =>
+    fetch(`/api/dreams/${id}/share`, { method: "DELETE" }).then(handle),
+
+  // Streamed reply — returns the raw Response so the caller can read chunks.
+  sendMessageStream: (id: string, content: string) =>
+    fetch(`/api/dreams/${id}/messages/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    }),
 
   sendMessage: (id: string, content: string) =>
     fetch(`/api/dreams/${id}/messages`, {

@@ -1,18 +1,24 @@
 import "server-only";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { newId } from "@/lib/utils";
 import { interpretDream, extractMetadata, type ChatMessage } from "@/lib/ai";
 
-/** Verify a dream belongs to the user; returns it or null. */
-export async function getOwnedDream(dreamId: string, userId: string) {
-  const rows = await db
-    .select()
-    .from(schema.dreams)
-    .where(
-      and(eq(schema.dreams.id, dreamId), eq(schema.dreams.userId, userId)),
-    )
-    .limit(1);
+/** Verify a dream belongs to the user; returns it or null. By default only
+ *  active (non-trashed) dreams; pass includeDeleted for trash operations. */
+export async function getOwnedDream(
+  dreamId: string,
+  userId: string,
+  includeDeleted = false,
+) {
+  const where = includeDeleted
+    ? and(eq(schema.dreams.id, dreamId), eq(schema.dreams.userId, userId))
+    : and(
+        eq(schema.dreams.id, dreamId),
+        eq(schema.dreams.userId, userId),
+        isNull(schema.dreams.deletedAt),
+      );
+  const rows = await db.select().from(schema.dreams).where(where).limit(1);
   return rows[0] ?? null;
 }
 
@@ -29,46 +35,39 @@ export async function getMessages(dreamId: string) {
  * persist it, refresh the dream's metadata (mood/symbols/title), and
  * return both new messages.
  */
-export async function addUserMessageAndReply(
-  dreamId: string,
-  content: string,
-) {
-  const now = Date.now();
-  const userMsg = {
+export async function saveUserMessage(dreamId: string, content: string) {
+  const msg = {
     id: newId(),
     dreamId,
     role: "user" as const,
     content,
-    createdAt: new Date(now),
+    createdAt: new Date(),
   };
-  await db.insert(schema.messages).values(userMsg);
+  await db.insert(schema.messages).values(msg);
+  return msg;
+}
 
-  // Build the conversation history for the model.
-  const history = await getMessages(dreamId);
-  const chatHistory: ChatMessage[] = history.map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
-
-  const reply = await interpretDream(chatHistory);
-
-  const assistantMsg = {
+export async function saveAssistantMessage(dreamId: string, content: string) {
+  const msg = {
     id: newId(),
     dreamId,
     role: "assistant" as const,
-    content: reply,
-    createdAt: new Date(now + 1),
+    content,
+    createdAt: new Date(),
   };
-  await db.insert(schema.messages).values(assistantMsg);
+  await db.insert(schema.messages).values(msg);
+  return msg;
+}
 
-  // Refresh metadata from the combined user text of this dream.
+/** Recompute mood/symbols from all of a dream's user turns and auto-title it. */
+export async function refreshDreamMeta(dreamId: string, firstContent: string) {
+  const history = await getMessages(dreamId);
   const userText = history
     .filter((m) => m.role === "user")
     .map((m) => m.content)
     .join("\n");
   const { mood, symbols } = extractMetadata(userText);
 
-  // Auto-title from the first user message if still default.
   const dream = (
     await db
       .select()
@@ -80,16 +79,31 @@ export async function addUserMessageAndReply(
   const update: Record<string, unknown> = {
     mood,
     symbols: JSON.stringify(symbols),
-    updatedAt: new Date(now + 1),
+    updatedAt: new Date(),
   };
   if (dream && dream.title === "حلم جديد") {
-    update.title = makeTitle(content);
+    update.title = makeTitle(firstContent);
   }
+  await db.update(schema.dreams).set(update).where(eq(schema.dreams.id, dreamId));
+  return { mood, symbols };
+}
 
-  await db
-    .update(schema.dreams)
-    .set(update)
-    .where(eq(schema.dreams.id, dreamId));
+/** Non-streaming flow: append user turn, get full reply, persist + refresh. */
+export async function addUserMessageAndReply(
+  dreamId: string,
+  content: string,
+) {
+  const userMsg = await saveUserMessage(dreamId, content);
+
+  const history = await getMessages(dreamId);
+  const chatHistory: ChatMessage[] = history.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
+  const reply = await interpretDream(chatHistory);
+
+  const assistantMsg = await saveAssistantMessage(dreamId, reply);
+  const { mood, symbols } = await refreshDreamMeta(dreamId, content);
 
   return { userMsg, assistantMsg, mood, symbols };
 }

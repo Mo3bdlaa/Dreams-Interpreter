@@ -53,26 +53,40 @@ export function Conversation({ dreamId }: { dreamId: string }) {
     setText("");
     setSending(true);
 
-    // Optimistic user bubble.
-    const optimistic: ChatMsg = {
-      id: "tmp-" + Date.now(),
-      role: "user",
-      content,
-      createdAt: Date.now(),
-    };
-    setMessages((m) => [...m, optimistic]);
+    const userId = "u-" + Date.now();
+    const asstId = "a-" + Date.now();
+    setMessages((m) => [
+      ...m,
+      { id: userId, role: "user", content, createdAt: Date.now() },
+      { id: asstId, role: "assistant", content: "", createdAt: Date.now() + 1 },
+    ]);
 
     try {
-      const res = await api.sendMessage(dreamId, content);
-      setMessages((m) => [
-        ...m.filter((x) => x.id !== optimistic.id),
-        res.userMessage,
-        res.assistantMessage,
-      ]);
-      if (dream)
-        setDream({ ...dream, mood: res.mood, symbols: res.symbols });
+      const res = await api.sendMessageStream(dreamId, content);
+      if (!res.ok || !res.body) throw new Error("stream failed");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let acc = "";
+      // Stream chunks into the assistant bubble as they arrive.
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        acc += decoder.decode(value, { stream: true });
+        setMessages((m) =>
+          m.map((x) => (x.id === asstId ? { ...x, content: acc } : x)),
+        );
+      }
+      // Refresh metadata (mood/symbols/title) now that the turn is saved.
+      try {
+        const data = await api.getDream(dreamId);
+        setDream(data.dream);
+      } catch {
+        /* keep streamed content */
+      }
     } catch {
-      setMessages((m) => m.filter((x) => x.id !== optimistic.id));
+      setMessages((m) => m.filter((x) => x.id !== userId && x.id !== asstId));
       setText(content);
     } finally {
       setSending(false);
@@ -194,10 +208,13 @@ export function Conversation({ dreamId }: { dreamId: string }) {
 
       {/* Messages */}
       <div className="flex-1 space-y-4 overflow-y-auto pb-4">
-        {messages.map((m) => (
-          <Bubble key={m.id} role={m.role} content={m.content} />
-        ))}
-        {sending && <Bubble role="assistant" content="… يفسّر حلمك" pending />}
+        {messages.map((m) =>
+          m.role === "assistant" && m.content === "" ? (
+            <Bubble key={m.id} role="assistant" content="… يفسّر حلمك" pending />
+          ) : (
+            <Bubble key={m.id} role={m.role} content={m.content} />
+          ),
+        )}
         <div ref={bottomRef} />
       </div>
 

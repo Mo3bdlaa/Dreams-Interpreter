@@ -33,6 +33,13 @@ export const dreams = sqliteTable("dreams", {
   // Final consolidated digest (markdown): the full dream + its final
   // interpretation, produced when the user "saves the summary" of a chat.
   summary: text("summary"),
+  // Classification of the dream: "رؤيا" (true vision) | "أضغاث" (jumbled) |
+  // "حديث نفس" (self-talk) | null if not classified.
+  kind: text("kind"),
+  // Public read-only share token (null = private).
+  shareToken: text("share_token"),
+  // Soft-delete timestamp (null = active, set = in trash).
+  deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .default(sql`(unixepoch() * 1000)`),

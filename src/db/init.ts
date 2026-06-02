@@ -21,6 +21,9 @@ const STATEMENTS = [
     mood TEXT,
     symbols TEXT,
     summary TEXT,
+    kind TEXT,
+    share_token TEXT,
+    deleted_at INTEGER,
     created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
     updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   )`,
@@ -40,6 +43,9 @@ const STATEMENTS = [
 // "duplicate column name" error when it's already there.
 const ADD_COLUMNS = [
   "ALTER TABLE dreams ADD COLUMN summary TEXT",
+  "ALTER TABLE dreams ADD COLUMN kind TEXT",
+  "ALTER TABLE dreams ADD COLUMN share_token TEXT",
+  "ALTER TABLE dreams ADD COLUMN deleted_at INTEGER",
 ];
 
 let initialized: Promise<void> | null = null;

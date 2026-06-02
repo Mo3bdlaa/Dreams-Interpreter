@@ -107,6 +107,64 @@ export async function interpretDream(
 }
 
 /**
+ * Streaming variant: yields the interpreter's reply in chunks (grounded with
+ * RAG). The closing sources footer is NOT included here — the caller appends
+ * it after the stream ends. Falls back to a single chunk when no AI key.
+ */
+export async function* streamDreamReply(
+  history: ChatMessage[],
+): AsyncGenerator<string> {
+  const lastUser = [...history].reverse().find((m) => m.role === "user");
+  const reference = lastUser ? buildRagContext(lastUser.content) : "";
+  const client = getClient();
+
+  if (!client) {
+    yield fallbackInterpretation(lastUser?.content || "");
+    return;
+  }
+
+  const systemContent = reference
+    ? `${SYSTEM_PROMPT}\n\n${reference}`
+    : SYSTEM_PROMPT;
+
+  const body: Record<string, unknown> = {
+    model: MODEL(),
+    temperature: 0.7,
+    max_tokens: MAX_TOKENS(),
+    stream: true,
+    messages: [
+      { role: "system", content: systemContent },
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+    ],
+  };
+  if (DISABLE_REASONING()) body.reasoning = { enabled: false };
+
+  const stream = (await client.chat.completions.create(
+    body as unknown as Parameters<typeof client.chat.completions.create>[0],
+  )) as unknown as AsyncIterable<{
+    choices: { delta?: { content?: string | null; reasoning?: string | null } }[];
+  }>;
+
+  let any = false;
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0]?.delta;
+    const piece = delta?.content || delta?.reasoning || "";
+    if (piece) {
+      any = true;
+      yield piece;
+    }
+  }
+  if (!any) {
+    yield "لم أتمكن من تكوين تفسير الآن، حاول إعادة صياغة الحلم بتفاصيل أكثر.";
+  }
+}
+
+/** The sources footer for a dream's latest user turn (appended post-stream). */
+export function sourcesFooterFor(text: string): string {
+  return buildSourcesFooter(text);
+}
+
+/**
  * Derive lightweight, deterministic metadata (mood + symbol keys) from the
  * dream text using the local symbol dictionary. Free and offline — used to
  * power the dashboard summary without extra AI calls.

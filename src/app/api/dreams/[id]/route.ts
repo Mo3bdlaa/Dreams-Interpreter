@@ -56,18 +56,27 @@ export async function PATCH(req: Request, { params }: Params) {
   return NextResponse.json({ ok: true });
 }
 
-// DELETE /api/dreams/:id
-export async function DELETE(_req: Request, { params }: Params) {
+// DELETE /api/dreams/:id        -> soft delete (move to trash)
+// DELETE /api/dreams/:id?hard=1 -> permanent delete
+export async function DELETE(req: Request, { params }: Params) {
   await ensureSchema();
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
 
   const { id } = await params;
-  const dream = await getOwnedDream(id, session.userId);
+  const hard = new URL(req.url).searchParams.get("hard") === "1";
+  const dream = await getOwnedDream(id, session.userId, true);
   if (!dream)
     return NextResponse.json({ error: "الحلم غير موجود" }, { status: 404 });
 
-  await db.delete(schema.dreams).where(eq(schema.dreams.id, id));
+  if (hard) {
+    await db.delete(schema.dreams).where(eq(schema.dreams.id, id));
+  } else {
+    await db
+      .update(schema.dreams)
+      .set({ deletedAt: new Date() })
+      .where(eq(schema.dreams.id, id));
+  }
   return NextResponse.json({ ok: true });
 }

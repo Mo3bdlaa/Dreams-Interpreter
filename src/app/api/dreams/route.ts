@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { ensureSchema } from "@/db/init";
 import { getSession } from "@/lib/auth";
 import { newId } from "@/lib/utils";
 import { addUserMessageAndReply } from "@/lib/dreams";
 
-// GET /api/dreams — list the current user's dreams (newest first).
+// GET /api/dreams — list the current user's active dreams (newest first).
 export async function GET() {
   await ensureSchema();
   const session = await getSession();
@@ -16,7 +16,12 @@ export async function GET() {
   const rows = await db
     .select()
     .from(schema.dreams)
-    .where(eq(schema.dreams.userId, session.userId))
+    .where(
+      and(
+        eq(schema.dreams.userId, session.userId),
+        isNull(schema.dreams.deletedAt),
+      ),
+    )
     .orderBy(desc(schema.dreams.updatedAt));
 
   return NextResponse.json({

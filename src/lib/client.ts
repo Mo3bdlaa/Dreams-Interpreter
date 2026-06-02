@@ -117,7 +117,7 @@ export const api = {
 
   summarizeDream: (id: string) =>
     fetch(`/api/dreams/${id}/summary`, { method: "POST" }).then((r) =>
-      handle<{ summary: string }>(r),
+      handle<{ summary: string; kind: string | null }>(r),
     ),
 
   summary: () =>

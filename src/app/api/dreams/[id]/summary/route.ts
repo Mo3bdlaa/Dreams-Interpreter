@@ -33,12 +33,12 @@ export async function POST(_req: Request, { params }: Params) {
     role: m.role,
     content: m.content,
   }));
-  const summary = await summarizeDream(history);
+  const { summary, kind } = await summarizeDream(history);
 
   await db
     .update(schema.dreams)
-    .set({ summary, updatedAt: new Date() })
+    .set({ summary, kind: kind ?? dream.kind, updatedAt: new Date() })
     .where(eq(schema.dreams.id, id));
 
-  return NextResponse.json({ summary });
+  return NextResponse.json({ summary, kind });
 }

@@ -108,12 +108,28 @@ export function Conversation({ dreamId }: { dreamId: string }) {
     await api.patchDream(dreamId, { dreamDate: ms });
   }
 
+  async function share() {
+    try {
+      const { token } = await api.shareDream(dreamId);
+      const url = `${window.location.origin}/share/${token}`;
+      if (dream) setDream({ ...dream, shareToken: token });
+      try {
+        await navigator.clipboard.writeText(url);
+        alert("تم إنشاء رابط مشاركة عام (للقراءة فقط) ونسخه:\n" + url);
+      } catch {
+        prompt("رابط المشاركة (انسخه):", url);
+      }
+    } catch {
+      alert("تعذّر إنشاء رابط المشاركة.");
+    }
+  }
+
   async function saveSummary() {
     if (savingSummary) return;
     setSavingSummary(true);
     try {
-      const { summary } = await api.summarizeDream(dreamId);
-      if (dream) setDream({ ...dream, summary });
+      const { summary, kind } = await api.summarizeDream(dreamId);
+      if (dream) setDream({ ...dream, summary, kind: kind ?? dream.kind });
       setShowSummary(true);
     } finally {
       setSavingSummary(false);
@@ -227,11 +243,11 @@ export function Conversation({ dreamId }: { dreamId: string }) {
           placeholder="أضف تفصيلاً أو اسأل عن رمز… (Ctrl+Enter للإرسال)"
           onSubmit={send}
         />
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <Link href="/dashboard" className="btn-ghost px-3 py-1.5 text-sm">
-            ← كل الأحلام
-          </Link>
-          <div className="flex gap-2">
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Link href="/dashboard" className="btn-ghost px-3 py-1.5 text-sm">
+              ← كل الأحلام
+            </Link>
             <button
               onClick={saveSummary}
               disabled={savingSummary || messages.length === 0}
@@ -241,13 +257,27 @@ export function Conversation({ dreamId }: { dreamId: string }) {
               {savingSummary ? "يلخّص…" : "📌 احفظ الخلاصة"}
             </button>
             <button
-              onClick={send}
-              disabled={!text.trim() || sending}
-              className="btn-primary"
+              onClick={share}
+              className="btn-ghost px-3 py-1.5 text-sm"
+              title="إنشاء رابط مشاركة عام للقراءة فقط"
             >
-              إرسال
+              🔗 مشاركة
+            </button>
+            <button
+              onClick={() => window.print()}
+              className="btn-ghost px-3 py-1.5 text-sm"
+              title="طباعة أو حفظ PDF"
+            >
+              🖨️ طباعة
             </button>
           </div>
+          <button
+            onClick={send}
+            disabled={!text.trim() || sending}
+            className="btn-primary"
+          >
+            إرسال
+          </button>
         </div>
       </div>
     </div>

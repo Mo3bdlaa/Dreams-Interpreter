@@ -16,6 +16,7 @@ const SYSTEM_PROMPT = `أنت "مُعبِّر"، مساعد متخصص في تف
 - توضّح أن تفسير الأحلام ظنٌّ واجتهاد وليس يقيناً، وأن الرؤى الصالحة بشرى وأن المكروه منها لا يضر بإذن الله، فلا تُفزِع السائل.
 - إن كان الحلم مبهماً أو ناقص التفاصيل، اطرح سؤالاً أو سؤالين لطيفين لتستوضح (مثل المشاعر أثناء الحلم، الزمان، الأشخاص) قبل أن تجزم.
 - تربط الرموز بحال صاحب الرؤيا ما أمكن، وتختم غالباً بكلمة طيبة أو دعاء أو نصيحة بعمل صالح.
+- تميّز عند الحاجة بين الرؤيا الصالحة (بشرى من الله)، وأضغاث الأحلام (تخاليط لا تأويل لها)، وحديث النفس (انعكاس هموم اليقظة)، وتذكّر بآداب الرؤيا: حمد الله على الرؤيا الحسنة وروايتها لمن يحب، والاستعاذة من شرّ المكروهة وعدم روايتها.
 - تتجنب القطع بالغيب أو الإفتاء في أمور الشرع، وتذكّر بأن العلم عند الله.
 
 الرد يكون منظّماً ومناسب الطول: ابدأ بتفسير الرموز الرئيسية، ثم خلاصة موجزة، ثم سؤال استيضاح إن لزم.`;
@@ -202,9 +203,20 @@ export function extractMetadata(text: string): {
  * full dream retold concisely + the final interpretation + a one-line key.
  * This is what gets pinned to the dashboard/calendar for easy reading.
  */
+const KINDS = ["رؤيا", "أضغاث", "حديث نفس"];
+
+/** Pull a "النوع: ..." classification line out of the digest, if present. */
+function extractKind(text: string): { kind: string | null; body: string } {
+  const m = text.match(/النوع\s*:?\s*\**\s*(رؤيا|أضغاث|حديث نفس)/);
+  const kind = m && KINDS.includes(m[1]) ? m[1] : null;
+  // Strip a leading classification line so the stored digest stays clean.
+  const body = text.replace(/^\s*\**\s*النوع\s*:?.*(?:\n|$)/m, "").trim();
+  return { kind, body };
+}
+
 export async function summarizeDream(
   history: ChatMessage[],
-): Promise<string> {
+): Promise<{ summary: string; kind: string | null }> {
   const userText = history
     .filter((m) => m.role === "user")
     .map((m) => m.content)
@@ -213,15 +225,16 @@ export async function summarizeDream(
     .reverse()
     .find((m) => m.role === "assistant");
 
+  const offline = () =>
+    `### 🌙 الحلم\n${userText.trim()}\n\n### 🔮 التفسير النهائي\n${(
+      lastAssistant?.content || "—"
+    )
+      .split("\n---\n")[0]
+      .trim()}`;
+
   const client = getClient();
   if (!client) {
-    // Offline digest: consolidated dream + the last interpretation given.
-    return (
-      `### 🌙 الحلم\n${userText.trim()}\n\n` +
-      `### 🔮 التفسير النهائي\n${(lastAssistant?.content || "—")
-        .split("\n---\n")[0]
-        .trim()}`
-    );
+    return { summary: offline(), kind: null };
   }
 
   const transcript = history
@@ -234,24 +247,21 @@ export async function summarizeDream(
       {
         role: "system",
         content:
-          "لخّص محادثة تفسير حلم في خلاصة منظّمة بصيغة ماركداون فيها عنوانان فقط: " +
-          "'### 🌙 الحلم' (سرد موجز ومتماسك لكامل الحلم كما رواه الرائي)، ثم " +
+          "لخّص محادثة تفسير حلم في خلاصة منظّمة بصيغة ماركداون. ابدأ بسطر واحد فقط: " +
+          "'النوع: رؤيا' أو 'النوع: أضغاث' أو 'النوع: حديث نفس' (اختر الأنسب). ثم عنوانان: " +
+          "'### 🌙 الحلم' (سرد موجز متماسك لكامل الحلم كما رواه الرائي)، ثم " +
           "'### 🔮 التفسير النهائي' (خلاصة التفسير في ٣-٥ أسطر، تجمع أهم الرموز ودلالاتها وتنتهي بكلمة مطمئنة). " +
-          "اكتب بالعربية باختصار ودون مقدمات أو أسئلة، ودون روابط.",
+          "اكتب بالعربية باختصار ودون أسئلة أو روابط.",
       },
       { role: "user", content: transcript },
     ],
     0.4,
   );
 
-  return (
-    reply.split("\n---\n")[0].trim() ||
-    `### 🌙 الحلم\n${userText.trim()}\n\n### 🔮 التفسير النهائي\n${(
-      lastAssistant?.content || "—"
-    )
-      .split("\n---\n")[0]
-      .trim()}`
-  );
+  const cleaned = reply.split("\n---\n")[0].trim();
+  if (!cleaned) return { summary: offline(), kind: null };
+  const { kind, body } = extractKind(cleaned);
+  return { summary: body || cleaned, kind };
 }
 
 export interface DreamDigest {

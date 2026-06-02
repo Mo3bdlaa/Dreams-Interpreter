@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Tajawal } from "next/font/google";
 import "./globals.css";
+import { PinGate } from "@/components/PinGate";
 
 const tajawal = Tajawal({
   subsets: ["arabic", "latin"],
@@ -21,7 +22,18 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ar" dir="rtl" className={tajawal.variable}>
-      <body className="font-sans antialiased">{children}</body>
+      <head>
+        {/* Apply saved theme before paint to avoid a flash. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem('theme')==='light')document.documentElement.classList.add('theme-light')}catch(e){}`,
+          }}
+        />
+      </head>
+      <body className="font-sans antialiased">
+        <PinGate />
+        {children}
+      </body>
     </html>
   );
 }

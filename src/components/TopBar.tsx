@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/client";
+import { ThemeToggle } from "./ThemeToggle";
+import { clearPin, getPinHash, setPin } from "@/lib/pin";
 
 export function TopBar({ name }: { name: string }) {
   const router = useRouter();
@@ -11,6 +13,23 @@ export function TopBar({ name }: { name: string }) {
     await api.logout();
     router.push("/login");
     router.refresh();
+  }
+
+  async function managePin() {
+    if (getPinHash()) {
+      if (confirm("يوجد رمز PIN. هل تريد إزالته؟")) {
+        clearPin();
+        alert("تم إزالة القفل.");
+      }
+      return;
+    }
+    const pin = prompt("اختر رمز PIN (4 أرقام أو أكثر) لقفل التطبيق على هذا الجهاز:");
+    if (pin && pin.trim().length >= 4) {
+      await setPin(pin.trim());
+      alert("تم تفعيل القفل. سيُطلب الرمز عند فتح التطبيق.");
+    } else if (pin !== null) {
+      alert("الرمز يجب أن يكون 4 أرقام على الأقل.");
+    }
   }
 
   return (
@@ -36,8 +55,17 @@ export function TopBar({ name }: { name: string }) {
             </Link>
           </nav>
         </div>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex items-center gap-2 text-sm">
           <span className="hidden text-night-100/70 sm:inline">أهلاً، {name}</span>
+          <ThemeToggle />
+          <button
+            onClick={managePin}
+            className="rounded-lg px-2 py-1.5 text-lg hover:bg-white/10"
+            title="قفل بـ PIN"
+            aria-label="قفل بـ PIN"
+          >
+            🔒
+          </button>
           <button onClick={logout} className="btn-ghost px-3 py-1.5 text-sm">
             خروج
           </button>

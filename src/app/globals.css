@@ -15,6 +15,43 @@ body {
   min-height: 100dvh;
 }
 
+/* Light theme: toggled by adding .theme-light on <html>. Overrides the
+   dark surfaces/text so the dreamy UI stays readable in daylight. */
+html.theme-light {
+  color-scheme: light;
+}
+html.theme-light body {
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(87, 75, 240, 0.12), transparent),
+    radial-gradient(900px 500px at -10% 110%, rgba(109, 110, 252, 0.1), transparent),
+    #f5f5fb;
+  color: #1a1640;
+}
+html.theme-light .card {
+  background: rgba(255, 255, 255, 0.75);
+  border-color: rgba(26, 22, 64, 0.1);
+}
+html.theme-light .btn-ghost {
+  background: rgba(26, 22, 64, 0.05);
+  color: #1a1640;
+  border-color: rgba(26, 22, 64, 0.12);
+}
+html.theme-light .input {
+  background: rgba(255, 255, 255, 0.9);
+  color: #1a1640;
+  border-color: rgba(26, 22, 64, 0.15);
+}
+html.theme-light .text-night-50,
+html.theme-light .text-night-100\/80,
+html.theme-light .text-night-100\/70,
+html.theme-light .text-night-100\/90,
+html.theme-light .text-night-200 {
+  color: #2a2470 !important;
+}
+html.theme-light header {
+  background: rgba(245, 245, 251, 0.8) !important;
+}
+
 /* Soft scrollbars */
 ::-webkit-scrollbar {
   width: 10px;

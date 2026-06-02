@@ -40,6 +40,11 @@ export function DreamCard({
         <span className={`rounded-full px-2 py-0.5 text-xs ${mood.cls}`}>
           {mood.emoji} {mood.label}
         </span>
+        {dream.kind && (
+          <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-xs text-indigo-300">
+            {dream.kind}
+          </span>
+        )}
         {dream.symbols.slice(0, 3).map((s) => (
           <span
             key={s}

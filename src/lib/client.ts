@@ -6,6 +6,7 @@ export interface DreamSummaryRow {
   dreamDate: number | null;
   mood: string | null;
   symbols: string[];
+  summary: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -83,6 +84,11 @@ export const api = {
         mood: string;
         symbols: string[];
       }>(r),
+    ),
+
+  summarizeDream: (id: string) =>
+    fetch(`/api/dreams/${id}/summary`, { method: "POST" }).then((r) =>
+      handle<{ summary: string }>(r),
     ),
 
   summary: () =>

@@ -1,7 +1,7 @@
 import "server-only";
 import OpenAI from "openai";
 import { matchSymbols } from "./dream-symbols";
-import { buildRagContext, retrieve } from "./rag";
+import { buildRagContext, buildSourcesFooter, retrieve } from "./rag";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -98,10 +98,12 @@ export async function interpretDream(
     0.7,
   );
 
-  return (
-    reply ||
-    "لم أتمكن من تكوين تفسير الآن، حاول إعادة صياغة الحلم بتفاصيل أكثر."
-  );
+  if (!reply) {
+    return "لم أتمكن من تكوين تفسير الآن، حاول إعادة صياغة الحلم بتفاصيل أكثر.";
+  }
+  // Cite the classical-reference pages used to ground this reply.
+  const footer = lastUser ? buildSourcesFooter(lastUser.content) : "";
+  return reply + footer;
 }
 
 /**
@@ -135,6 +137,63 @@ export function extractMetadata(text: string): {
   }
 
   return { mood, symbols };
+}
+
+/**
+ * Condense a whole dream conversation into a saved digest (markdown): the
+ * full dream retold concisely + the final interpretation + a one-line key.
+ * This is what gets pinned to the dashboard/calendar for easy reading.
+ */
+export async function summarizeDream(
+  history: ChatMessage[],
+): Promise<string> {
+  const userText = history
+    .filter((m) => m.role === "user")
+    .map((m) => m.content)
+    .join("\n");
+  const lastAssistant = [...history]
+    .reverse()
+    .find((m) => m.role === "assistant");
+
+  const client = getClient();
+  if (!client) {
+    // Offline digest: consolidated dream + the last interpretation given.
+    return (
+      `### 🌙 الحلم\n${userText.trim()}\n\n` +
+      `### 🔮 التفسير النهائي\n${(lastAssistant?.content || "—")
+        .split("\n---\n")[0]
+        .trim()}`
+    );
+  }
+
+  const transcript = history
+    .map((m) => `${m.role === "user" ? "الرائي" : "المعبّر"}: ${m.content}`)
+    .join("\n");
+
+  const reply = await chatComplete(
+    client,
+    [
+      {
+        role: "system",
+        content:
+          "لخّص محادثة تفسير حلم في خلاصة منظّمة بصيغة ماركداون فيها عنوانان فقط: " +
+          "'### 🌙 الحلم' (سرد موجز ومتماسك لكامل الحلم كما رواه الرائي)، ثم " +
+          "'### 🔮 التفسير النهائي' (خلاصة التفسير في ٣-٥ أسطر، تجمع أهم الرموز ودلالاتها وتنتهي بكلمة مطمئنة). " +
+          "اكتب بالعربية باختصار ودون مقدمات أو أسئلة، ودون روابط.",
+      },
+      { role: "user", content: transcript },
+    ],
+    0.4,
+  );
+
+  return (
+    reply.split("\n---\n")[0].trim() ||
+    `### 🌙 الحلم\n${userText.trim()}\n\n### 🔮 التفسير النهائي\n${(
+      lastAssistant?.content || "—"
+    )
+      .split("\n---\n")[0]
+      .trim()}`
+  );
 }
 
 export interface DreamDigest {
@@ -207,7 +266,8 @@ function fallbackInterpretation(text: string): string {
   return (
     "بناءً على مراجع تفسير الأحلام لابن سيرين، هذه أقرب الدلالات لرموز حلمك:\n\n" +
     body +
-    "\n\n(ملاحظة: لم يُضبط مزوّد ذكاء اصطناعي بعد، لذا هذا استرجاع مباشر من المراجع. اضبط `AI_API_KEY` للحصول على تفسير تفاعلي يربط الرموز بحالتك.)\n\nوتذكّر أن تفسير الأحلام ظنٌّ واجتهاد، والخير فيما اختاره الله."
+    "\n\n(ملاحظة: لم يُضبط مزوّد ذكاء اصطناعي بعد، لذا هذا استرجاع مباشر من المراجع. اضبط `AI_API_KEY` للحصول على تفسير تفاعلي يربط الرموز بحالتك.)\n\nوتذكّر أن تفسير الأحلام ظنٌّ واجتهاد، والخير فيما اختاره الله." +
+    buildSourcesFooter(text)
   );
 }
 

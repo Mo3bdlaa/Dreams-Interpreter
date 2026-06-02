@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api, type ChatMsg, type DreamSummaryRow } from "@/lib/client";
 import { VoiceTextarea } from "./VoiceTextarea";
+import { Markdown } from "./Markdown";
 import { moodMeta } from "./format";
 
 function toDateInput(ms: number | null): string {
@@ -22,6 +23,8 @@ export function Conversation({ dreamId }: { dreamId: string }) {
   const [loading, setLoading] = useState(true);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  const [savingSummary, setSavingSummary] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   async function load() {
@@ -91,6 +94,18 @@ export function Conversation({ dreamId }: { dreamId: string }) {
     await api.patchDream(dreamId, { dreamDate: ms });
   }
 
+  async function saveSummary() {
+    if (savingSummary) return;
+    setSavingSummary(true);
+    try {
+      const { summary } = await api.summarizeDream(dreamId);
+      if (dream) setDream({ ...dream, summary });
+      setShowSummary(true);
+    } finally {
+      setSavingSummary(false);
+    }
+  }
+
   if (loading) {
     return <p className="p-6 text-night-100/60">جارٍ التحميل…</p>;
   }
@@ -157,6 +172,24 @@ export function Conversation({ dreamId }: { dreamId: string }) {
             </div>
           )}
         </div>
+
+        {/* Saved digest (full dream + final interpretation) */}
+        {dream.summary && (
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <button
+              onClick={() => setShowSummary((s) => !s)}
+              className="flex w-full items-center justify-between text-sm font-medium text-night-200 hover:text-night-100"
+            >
+              <span>📌 خلاصة الحلم المحفوظة</span>
+              <span>{showSummary ? "▲" : "▼"}</span>
+            </button>
+            {showSummary && (
+              <div className="mt-2 rounded-xl bg-night-950/50 p-3 text-sm leading-relaxed text-night-100/90 animate-fade-in">
+                <Markdown content={dream.summary} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Messages */}
@@ -177,17 +210,27 @@ export function Conversation({ dreamId }: { dreamId: string }) {
           placeholder="أضف تفصيلاً أو اسأل عن رمز… (Ctrl+Enter للإرسال)"
           onSubmit={send}
         />
-        <div className="mt-2 flex justify-between">
+        <div className="mt-2 flex items-center justify-between gap-2">
           <Link href="/dashboard" className="btn-ghost px-3 py-1.5 text-sm">
             ← كل الأحلام
           </Link>
-          <button
-            onClick={send}
-            disabled={!text.trim() || sending}
-            className="btn-primary"
-          >
-            إرسال
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={saveSummary}
+              disabled={savingSummary || messages.length === 0}
+              className="btn-ghost px-3 py-1.5 text-sm"
+              title="لخّص الحلم وتفسيره النهائي واحفظه"
+            >
+              {savingSummary ? "يلخّص…" : "📌 احفظ الخلاصة"}
+            </button>
+            <button
+              onClick={send}
+              disabled={!text.trim() || sending}
+              className="btn-primary"
+            >
+              إرسال
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -214,7 +257,7 @@ function Bubble({
         } ${pending ? "animate-pulse text-night-100/60" : ""}`}
       >
         {!isUser && !pending && <div className="mb-1 text-xs opacity-60">🌙 مُعبِّر</div>}
-        {content}
+        {pending ? content : <Markdown content={content} />}
       </div>
     </div>
   );

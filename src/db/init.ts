@@ -20,6 +20,7 @@ const STATEMENTS = [
     dream_date INTEGER,
     mood TEXT,
     symbols TEXT,
+    summary TEXT,
     created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
     updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   )`,
@@ -34,6 +35,13 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_messages_dream ON messages(dream_id)`,
 ];
 
+// Additive column migrations for databases created before a column existed.
+// SQLite has no "ADD COLUMN IF NOT EXISTS", so we attempt each and ignore the
+// "duplicate column name" error when it's already there.
+const ADD_COLUMNS = [
+  "ALTER TABLE dreams ADD COLUMN summary TEXT",
+];
+
 let initialized: Promise<void> | null = null;
 
 export function ensureSchema(): Promise<void> {
@@ -42,7 +50,19 @@ export function ensureSchema(): Promise<void> {
       url: process.env.DATABASE_URL || "file:local.db",
       authToken: process.env.DATABASE_AUTH_TOKEN || undefined,
     });
-    initialized = client.batch(STATEMENTS, "write").then(() => undefined);
+    initialized = client
+      .batch(STATEMENTS, "write")
+      .then(async () => {
+        for (const sql of ADD_COLUMNS) {
+          try {
+            await client.execute(sql);
+          } catch (e) {
+            // Ignore "duplicate column" — the column already exists.
+            if (!String(e).includes("duplicate column")) throw e;
+          }
+        }
+      })
+      .then(() => undefined);
   }
   return initialized;
 }

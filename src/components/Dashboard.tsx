@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, type DreamSummaryRow } from "@/lib/client";
 import { VoiceTextarea } from "./VoiceTextarea";
-import { formatArabicDate, moodMeta } from "./format";
+import { DreamCard } from "./DreamCard";
 import { SummaryPanel } from "./SummaryPanel";
 
 export function Dashboard() {
@@ -118,41 +117,9 @@ export function Dashboard() {
           </div>
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2">
-            {dreams.map((d) => {
-              const mood = moodMeta(d.mood);
-              return (
-                <li key={d.id} className="card group p-4 transition hover:border-night-400/40">
-                  <div className="flex items-start justify-between gap-2">
-                    <Link href={`/dreams/${d.id}`} className="flex-1">
-                      <h3 className="font-bold leading-snug">{d.title}</h3>
-                      <p className="mt-1 text-xs text-night-100/60">
-                        {formatArabicDate(d.dreamDate)}
-                      </p>
-                    </Link>
-                    <button
-                      onClick={() => remove(d.id)}
-                      className="text-night-100/40 opacity-0 transition group-hover:opacity-100 hover:text-red-400"
-                      title="حذف"
-                    >
-                      🗑
-                    </button>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${mood.cls}`}>
-                      {mood.emoji} {mood.label}
-                    </span>
-                    {d.symbols.slice(0, 3).map((s) => (
-                      <span
-                        key={s}
-                        className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-night-100/70"
-                      >
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                </li>
-              );
-            })}
+            {dreams.map((d) => (
+              <DreamCard key={d.id} dream={d} onDelete={remove} />
+            ))}
           </ul>
         )}
       </section>

@@ -5,7 +5,7 @@ import { jwtVerify } from "jose";
 // server-only and pulls node deps, so we don't import it into edge middleware).
 const COOKIE_NAME = "dream_session";
 
-const PROTECTED = ["/dashboard", "/dreams"];
+const PROTECTED = ["/dashboard", "/dreams", "/calendar"];
 const AUTH_PAGES = ["/login", "/register"];
 
 async function isAuthed(token: string | undefined): Promise<boolean> {
@@ -42,5 +42,11 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/dreams/:path*", "/login", "/register"],
+  matcher: [
+    "/dashboard/:path*",
+    "/dreams/:path*",
+    "/calendar/:path*",
+    "/login",
+    "/register",
+  ],
 };

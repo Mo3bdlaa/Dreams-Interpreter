@@ -30,6 +30,9 @@ export const dreams = sqliteTable("dreams", {
   mood: text("mood"),
   // JSON array of key symbol keys extracted from the dream.
   symbols: text("symbols"),
+  // Final consolidated digest (markdown): the full dream + its final
+  // interpretation, produced when the user "saves the summary" of a chat.
+  summary: text("summary"),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .default(sql`(unixepoch() * 1000)`),

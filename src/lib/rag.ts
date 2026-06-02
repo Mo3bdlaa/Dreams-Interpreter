@@ -10,6 +10,7 @@ export interface KbEntry {
   id: string;
   symbol: string;
   source: string;
+  url: string;
   text: string;
 }
 
@@ -56,6 +57,7 @@ function idf(token: string): number {
 
 export interface Retrieved extends KbEntry {
   score: number;
+  symbolMatch: boolean;
 }
 
 /**
@@ -109,6 +111,7 @@ export function retrieve(dreamText: string, k = 6): Retrieved[] {
     .map((s) => ({
       ...s.entry,
       score: Number((s.bm25 + (s.symbolMatch ? 100 : 0)).toFixed(3)),
+      symbolMatch: s.symbolMatch,
     }));
 }
 
@@ -127,6 +130,37 @@ export function buildRagContext(dreamText: string, k = 6): string {
     "ذات الصلة برموز هذا الحلم. اعتمد عليها في تفسيرك ولا تخرج عنها بلا داعٍ:\n" +
     lines
   );
+}
+
+export interface Source {
+  symbol: string;
+  url: string;
+}
+
+/**
+ * Distinct (symbol → source page) citations. Only entries whose symbol name
+ * actually appears in the dream are cited, so links stay precise (no loose
+ * BM25 fillers).
+ */
+export function retrieveSources(dreamText: string, k = 8): Source[] {
+  const hits = retrieve(dreamText, k).filter((h) => h.symbolMatch);
+  const seen = new Set<string>();
+  const sources: Source[] = [];
+  for (const h of hits) {
+    if (seen.has(h.symbol)) continue;
+    seen.add(h.symbol);
+    sources.push({ symbol: h.symbol, url: h.url });
+  }
+  return sources;
+}
+
+/** A compact markdown "sources" footer linking each cited symbol to its
+ *  classical-reference page. Empty string when there is nothing to cite. */
+export function buildSourcesFooter(dreamText: string, k = 6): string {
+  const sources = retrieveSources(dreamText, k);
+  if (sources.length === 0) return "";
+  const links = sources.map((s) => `[${s.symbol}](${s.url})`).join(" · ");
+  return `\n\n---\n📚 **المصادر** (تفسير ابن سيرين): ${links}`;
 }
 
 export const KB_SIZE = ENTRIES.length;

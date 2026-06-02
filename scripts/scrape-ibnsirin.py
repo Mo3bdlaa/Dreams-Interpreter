@@ -46,14 +46,27 @@ def strip_tags(s: str) -> str:
 
 def clean_symbol(h3_text: str) -> str:
     t = strip_tags(h3_text)
+    t = t.replace("ﷺ", " ").replace("ﷻ", " ")  # honorific ligatures
     t = re.sub(r"^(?:تفسير|رؤية|معنى)\s+", "", t)
-    # Strip trailing "في الأحلام/الاحلام/المنام/الحلم" (alef-hamza tolerant).
-    t = re.sub(r"\s+في\s+(?:ال[أا]حلام|المنام|الحلم)$", "", t)
+    # Drop "في الأحلام/المنام/الحلم …" and anything after it (not just at end).
+    t = re.sub(r"\s+(?:في|عند)\s+(?:ال[أا]حلام|المنام(?:ات)?|الحلم)\b.*$", "", t)
+    t = re.sub(r"\s+وغيره\b.*$", "", t)
     t = re.sub(r"^(?:تفسير|رؤية|معنى)\s+", "", t)
-    return t.strip()
+    return re.sub(r"\s+", " ", t).strip()
 
 
-def parse_page(htmltext: str):
+def trim_to_sentence(text: str, limit: int = 900) -> str:
+    """Cut overly long text at a sentence boundary instead of mid-word."""
+    if len(text) <= limit:
+        return text.strip()
+    cut = text[:limit]
+    end = max(cut.rfind(". "), cut.rfind("."), cut.rfind("؟"), cut.rfind("!"))
+    if end > limit * 0.5:
+        cut = cut[: end + 1]
+    return cut.strip()
+
+
+def parse_page(htmltext: str, url: str):
     # Split into sections that each start at an <h3>.
     parts = re.split(r"(<h3[^>]*>.*?</h3>)", htmltext, flags=re.S)
     entries = []
@@ -67,8 +80,9 @@ def parse_page(htmltext: str):
         chunks = re.findall(r"<(?:li|p)[^>]*>(.*?)</(?:li|p)>", body, flags=re.S)
         text = " ".join(strip_tags(c) for c in chunks)
         text = re.sub(r"\s+", " ", text).strip()
-        if symbol and len(symbol) <= 40 and len(text) >= 25:
-            entries.append((symbol, text[:600]))
+        text = trim_to_sentence(text)
+        if symbol and len(symbol) <= 45 and len(text) >= 25:
+            entries.append((symbol, text, url))
         i += 2
     return entries
 
@@ -83,9 +97,9 @@ def main():
         except Exception as e:  # noqa
             print(f"  ! failed {slug}: {e}")
             continue
-        entries = parse_page(page)
+        entries = parse_page(page, url)
         added = 0
-        for symbol, text in entries:
+        for symbol, text, src_url in entries:
             key = symbol.strip()
             if key in seen:
                 continue
@@ -95,6 +109,7 @@ def main():
                     "id": f"ibnsirin-{len(corpus)+1}",
                     "symbol": key,
                     "source": "تفسير الأحلام لابن سيرين",
+                    "url": src_url,
                     "text": text,
                 }
             )

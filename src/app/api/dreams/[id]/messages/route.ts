@@ -3,6 +3,9 @@ import { ensureSchema } from "@/db/init";
 import { getSession } from "@/lib/auth";
 import { getOwnedDream, addUserMessageAndReply } from "@/lib/dreams";
 
+// Allow time for AI generation + embedding on serverless (Vercel).
+export const maxDuration = 60;
+
 type Params = { params: Promise<{ id: string }> };
 
 // POST /api/dreams/:id/messages — send a turn, get the interpreter's reply.

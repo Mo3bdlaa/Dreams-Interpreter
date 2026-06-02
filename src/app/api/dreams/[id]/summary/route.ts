@@ -6,6 +6,9 @@ import { getSession } from "@/lib/auth";
 import { getOwnedDream, getMessages } from "@/lib/dreams";
 import { summarizeDream, type ChatMessage } from "@/lib/ai";
 
+// Allow time for AI generation + embedding on serverless (Vercel).
+export const maxDuration = 60;
+
 type Params = { params: Promise<{ id: string }> };
 
 // POST /api/dreams/:id/summary — condense the conversation into a saved

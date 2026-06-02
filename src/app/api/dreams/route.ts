@@ -6,6 +6,9 @@ import { getSession } from "@/lib/auth";
 import { newId } from "@/lib/utils";
 import { addUserMessageAndReply } from "@/lib/dreams";
 
+// Allow time for AI generation + embedding on serverless (Vercel).
+export const maxDuration = 60;
+
 // GET /api/dreams — list the current user's active dreams (newest first).
 export async function GET() {
   await ensureSchema();

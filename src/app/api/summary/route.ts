@@ -6,6 +6,9 @@ import { getSession } from "@/lib/auth";
 import { generateOverallSummary, type DreamDigest } from "@/lib/ai";
 import { formatArabicDate } from "@/lib/utils";
 
+// Allow time for AI generation + embedding on serverless (Vercel).
+export const maxDuration = 60;
+
 // GET /api/summary — stats + an AI-written overall reflection of all dreams.
 export async function GET() {
   await ensureSchema();

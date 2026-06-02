@@ -9,6 +9,9 @@ import {
 } from "@/lib/dreams";
 import { streamDreamReply, sourcesFooterFor, type ChatMessage } from "@/lib/ai";
 
+// Allow time for AI generation + embedding on serverless (Vercel).
+export const maxDuration = 60;
+
 type Params = { params: Promise<{ id: string }> };
 
 // POST /api/dreams/:id/messages/stream — Server-streamed interpretation.

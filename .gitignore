@@ -32,3 +32,6 @@ local.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# raw embeddings (large; quantized into kb-vectors.json)
+src/data/embeddings.json

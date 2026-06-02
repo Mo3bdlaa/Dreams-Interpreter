@@ -91,18 +91,27 @@ scripts/
 - الاسترجاع **محلي بالكامل** (بلا استدعاءات خارجية وقت الطلب)، فيعمل حتى في وضع
   الـ fallback بدون مفتاح AI.
 
-### embeddings دلالية (اختياري)
+### استرجاع هجين (lexical + دلالي)
 
-لتفعيل المطابقة الدلالية (بالمعنى لا اللفظ) ابنِ المتجهات مرة واحدة:
+الاسترجاع **هجين**: مطابقة اسم الرمز اللفظية (دقيقة) + جيران دلاليون بالـ
+embeddings (يمسكون المرادفات التي يفوتها اللفظ، مثل «أعوم في مياه» ← ماء/بحر).
+
+المتجهات مبنية مسبقاً ومضغوطة (int8) في `src/data/kb-vectors.json` (~6MB).
+لإعادة بنائها بموديل embedding متوافق مع OpenAI:
 
 ```bash
-AI_API_KEY=... AI_BASE_URL=https://api.openai.com/v1 \
-AI_EMBED_MODEL=text-embedding-3-small \
-node scripts/build-embeddings.mjs    # ينشئ src/data/embeddings.json
+AI_API_KEY=... AI_BASE_URL=https://openrouter.ai/api/v1 \
+AI_EMBED_MODEL="nvidia/llama-nemotron-embed-vl-1b-v2:free" \
+node scripts/build-embeddings.mjs        # ينشئ embeddings.json الخام
+node scripts/quantize-embeddings.mjs     # يضغطه إلى kb-vectors.json (int8)
 ```
 
-بدونها يبقى الاسترجاع لفظياً (مجاني وبلا زمن انتظار). منطق المتجهات (cosine)
-في `src/lib/vectors.ts` ومُغطّى باختبارات.
+يُفعَّل الجزء الدلالي تلقائياً عند ضبط `AI_EMBED_MODEL` ووجود `kb-vectors.json`؛
+وإلا يبقى الاسترجاع لفظياً بالكامل (مجاني، محلي، بلا زمن انتظار). منطق التشابه
+(cosine) في `src/lib/vectors.ts` ومُغطّى باختبارات.
+
+> ملاحظة خصوصية: تفعيل الـ embedding يرسل نص الحلم إلى مزوّد الـ embeddings.
+> الموديلات المجانية على OpenRouter قد تتطلب السماح باستخدام البيانات في التدريب.
 
 ## الاختبارات
 

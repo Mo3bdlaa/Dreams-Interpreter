@@ -163,4 +163,20 @@ export function buildSourcesFooter(dreamText: string, k = 6): string {
   return `\n\n---\n📚 **المصادر** (تفسير ابن سيرين): ${links}`;
 }
 
+const BY_ID = new Map(ENTRIES.map((e) => [e.id, e]));
+export function entryById(id: string): KbEntry | undefined {
+  return BY_ID.get(id);
+}
+
+/** Format a set of reference entries into the grounding block. */
+export function formatReferences(entries: KbEntry[]): string {
+  if (entries.length === 0) return "";
+  const lines = entries.map((h) => `- [${h.symbol}] ${h.text}`).join("\n");
+  return (
+    "مقتطفات من مراجع تفسير الأحلام الكلاسيكية (المصدر: تفسير الأحلام لابن سيرين) " +
+    "ذات الصلة برموز هذا الحلم. اعتمد عليها في تفسيرك ولا تخرج عنها بلا داعٍ:\n" +
+    lines
+  );
+}
+
 export const KB_SIZE = ENTRIES.length;

@@ -1,7 +1,50 @@
 import "server-only";
 import OpenAI from "openai";
 import { matchSymbols } from "./dream-symbols";
-import { buildRagContext, buildSourcesFooter, retrieve } from "./rag";
+import {
+  buildSourcesFooter,
+  retrieve,
+  entryById,
+  formatReferences,
+  type KbEntry,
+} from "./rag";
+import { embedQuery, isEmbeddingConfigured } from "./embed";
+import { isSemanticReady, semanticRank } from "./semantic";
+
+/**
+ * Build the grounding reference block for a dream. Lexical symbol matches
+ * (precise) come first; when embeddings are configured, semantically similar
+ * entries are merged in to catch paraphrased symbols the wording missed.
+ */
+async function buildGrounding(text: string, k = 8): Promise<string> {
+  const lexical = retrieve(text, k);
+  const picked: KbEntry[] = [];
+  const seen = new Set<string>();
+  const add = (e?: KbEntry) => {
+    if (e && !seen.has(e.id)) {
+      seen.add(e.id);
+      picked.push(e);
+    }
+  };
+
+  // 1) Precise lexical symbol-name matches first.
+  for (const h of lexical) if (h.symbolMatch) add(h);
+
+  // 2) Semantic neighbours (by meaning) if embeddings are available.
+  if (isEmbeddingConfigured() && isSemanticReady()) {
+    const qv = await embedQuery(text);
+    if (qv) {
+      for (const s of semanticRank(qv, k)) {
+        if (s.score > 0.35) add(entryById(s.id));
+      }
+    }
+  }
+
+  // 3) Fill any remaining slots with the rest of the lexical candidates.
+  for (const h of lexical) add(h);
+
+  return formatReferences(picked.slice(0, k));
+}
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -79,7 +122,7 @@ export async function interpretDream(
 ): Promise<string> {
   const lastUser = [...history].reverse().find((m) => m.role === "user");
   // Retrieve grounding references from the Ibn-Sirin corpus (RAG).
-  const reference = lastUser ? buildRagContext(lastUser.content) : "";
+  const reference = lastUser ? await buildGrounding(lastUser.content) : "";
 
   const client = getClient();
   if (!client) {
@@ -116,7 +159,7 @@ export async function* streamDreamReply(
   history: ChatMessage[],
 ): AsyncGenerator<string> {
   const lastUser = [...history].reverse().find((m) => m.role === "user");
-  const reference = lastUser ? buildRagContext(lastUser.content) : "";
+  const reference = lastUser ? await buildGrounding(lastUser.content) : "";
   const client = getClient();
 
   if (!client) {

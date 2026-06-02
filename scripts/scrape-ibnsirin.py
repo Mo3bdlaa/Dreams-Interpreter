@@ -117,7 +117,32 @@ def main():
         print(f"  {slug}: +{added} (total {len(corpus)})")
         time.sleep(0.6)
 
-    out = Path(__file__).resolve().parents[1] / "src/data/knowledge-base.json"
+    # Merge curated symbols (قمر، شمس، …) to fill common gaps the alphabetical
+    # pages miss. These carry richer, sentiment-tagged interpretations.
+    root = Path(__file__).resolve().parents[1]
+    curated_path = root / "src/data/dream-symbols.json"
+    index_url = BASE
+    if curated_path.exists():
+        curated = json.loads(curated_path.read_text(encoding="utf-8"))
+        added = 0
+        for c in curated:
+            key = c["key"].strip()
+            if key in seen:
+                continue
+            seen.add(key)
+            corpus.append(
+                {
+                    "id": f"curated-{len(corpus)+1}",
+                    "symbol": key,
+                    "source": "قاموس تفسير الأحلام (ابن سيرين/النابلسي)",
+                    "url": index_url,
+                    "text": c["interpretation"],
+                }
+            )
+            added += 1
+        print(f"  merged curated: +{added}")
+
+    out = root / "src/data/knowledge-base.json"
     out.write_text(
         json.dumps(corpus, ensure_ascii=False, indent=1), encoding="utf-8"
     )

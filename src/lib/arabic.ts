@@ -32,16 +32,33 @@ export function stripArticle(token: string): string {
   return token;
 }
 
+// Single-letter proclitics (conjunctions/prepositions) that may attach to a
+// noun: و/ف/ب/ك/ل. Ambiguous with root letters, so we only strip them from the
+// dream-side token (not the dictionary term) and require a long-enough stem.
+const PROCLITICS = ["و", "ف", "ب", "ك", "ل"];
+
+function coreMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  // The dream token (a) may carry inflectional suffixes on the dictionary
+  // term (b), e.g. "نورا" -> "نور". We only allow the term to be a prefix of
+  // the token (not the reverse) to avoid citing longer unrelated symbols.
+  if (b.length >= 3 && a.startsWith(b) && a.length - b.length <= 2) return true;
+  return false;
+}
+
 /** True if a single text token matches a term, tolerating the definite
- *  article and short inflectional suffixes (ـاً، ـها، ـون…). Both inputs
- *  must already be normalized. */
+ *  article, attached proclitics, and short inflectional suffixes (ـاً،ـها…).
+ *  Both inputs must already be normalized. */
 export function tokenMatches(token: string, term: string): boolean {
-  if (token === term) return true;
   const a = stripArticle(token);
   const b = stripArticle(term);
-  if (a === b) return true;
-  if (b.length >= 3 && a.startsWith(b) && a.length - b.length <= 2) return true;
-  if (a.length >= 3 && b.startsWith(a) && b.length - a.length <= 2) return true;
+  if (coreMatch(a, b)) return true;
+  // Try stripping one leading proclitic from the (longer) dream token, e.g.
+  // "بثعبان" -> "ثعبان". Guard with length so "بحر"/"بيت" aren't gutted.
+  if (token.length >= 4 && PROCLITICS.includes(token[0])) {
+    const stripped = stripArticle(token.slice(1));
+    if (stripped.length >= 3 && coreMatch(stripped, b)) return true;
+  }
   return false;
 }
 

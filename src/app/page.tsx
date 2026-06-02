@@ -7,9 +7,9 @@ export default async function Home() {
   if (session) redirect("/dashboard");
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-3xl flex-col items-center justify-center px-6 text-center">
+    <main className="mx-auto flex min-h-dvh max-w-3xl flex-col items-center justify-center px-6 py-12 text-center">
       <div className="animate-fade-in">
-        <div className="mb-6 text-6xl">🌙</div>
+        <div className="mb-6 text-6xl leading-[1.25]">🌙</div>
         <h1 className="mb-4 text-4xl font-bold sm:text-5xl">مُعبِّر الأحلام</h1>
         <p className="mx-auto mb-8 max-w-xl text-lg leading-relaxed text-night-100/80">
           احكِ حلمك، واحصل على تفسير مستند إلى كتب تفسير الأحلام الإسلامية

@@ -34,6 +34,40 @@ export function isAIConfigured(): boolean {
 }
 
 const MODEL = () => process.env.AI_MODEL || "gpt-4o-mini";
+const MAX_TOKENS = () => Number(process.env.AI_MAX_TOKENS) || 1024;
+// Some free OpenRouter models are "reasoning" models that spend the whole
+// token budget thinking and return empty content. Set AI_DISABLE_REASONING=true
+// to turn that off (OpenRouter-specific param, ignored elsewhere).
+const DISABLE_REASONING = () => process.env.AI_DISABLE_REASONING === "true";
+
+type ChatTurn = { role: "system" | "user" | "assistant"; content: string };
+
+/**
+ * Provider-agnostic chat call. Applies max_tokens and (optionally) disables
+ * reasoning, and falls back to the model's reasoning text if it returned no
+ * content — so reasoning models never yield an empty reply.
+ */
+async function chatComplete(
+  client: OpenAI,
+  messages: ChatTurn[],
+  temperature: number,
+): Promise<string> {
+  const body: Record<string, unknown> = {
+    model: MODEL(),
+    temperature,
+    max_tokens: MAX_TOKENS(),
+    messages,
+  };
+  if (DISABLE_REASONING()) body.reasoning = { enabled: false };
+
+  // Cast: `reasoning` is an OpenRouter extension not in the OpenAI types.
+  const completion = await client.chat.completions.create(
+    body as unknown as Parameters<typeof client.chat.completions.create>[0],
+  );
+  const msg = (completion as { choices: { message: { content?: string | null; reasoning?: string | null } }[] })
+    .choices[0]?.message;
+  return (msg?.content || msg?.reasoning || "").trim();
+}
 
 /**
  * Produce an interpretation reply for a dream conversation. The latest
@@ -55,17 +89,17 @@ export async function interpretDream(
     ? `${SYSTEM_PROMPT}\n\n${reference}`
     : SYSTEM_PROMPT;
 
-  const completion = await client.chat.completions.create({
-    model: MODEL(),
-    temperature: 0.7,
-    messages: [
+  const reply = await chatComplete(
+    client,
+    [
       { role: "system", content: systemContent },
       ...history.map((m) => ({ role: m.role, content: m.content })),
     ],
-  });
+    0.7,
+  );
 
   return (
-    completion.choices[0]?.message?.content?.trim() ||
+    reply ||
     "لم أتمكن من تكوين تفسير الآن، حاول إعادة صياغة الحلم بتفاصيل أكثر."
   );
 }
@@ -133,10 +167,9 @@ export async function generateOverallSummary(
     return fallbackSummary(dreams);
   }
 
-  const completion = await client.chat.completions.create({
-    model: MODEL(),
-    temperature: 0.6,
-    messages: [
+  const summary = await chatComplete(
+    client,
+    [
       {
         role: "system",
         content:
@@ -147,12 +180,10 @@ export async function generateOverallSummary(
         content: `هذه قائمة أحلامي، اكتب لي نظرة عامة:\n${digest}`,
       },
     ],
-  });
-
-  return (
-    completion.choices[0]?.message?.content?.trim() ||
-    fallbackSummary(dreams)
+    0.6,
   );
+
+  return summary || fallbackSummary(dreams);
 }
 
 // ---------------------------------------------------------------------------

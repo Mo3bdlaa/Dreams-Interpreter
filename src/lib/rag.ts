@@ -5,6 +5,7 @@ import {
   tokenMatches,
   STOPWORDS,
 } from "./arabic";
+import { normalizeDialectText } from "./dialect";
 
 export interface KbEntry {
   id: string;
@@ -66,7 +67,9 @@ export interface Retrieved extends KbEntry {
  * name is actually mentioned in the dream (clitic/suffix tolerant).
  */
 export function retrieve(dreamText: string, k = 6): Retrieved[] {
-  const queryTokens = tokenize(dreamText).filter(
+  // Expand dialect → MSA first so colloquial narration ("وشي" = الوجه) maps to
+  // the symbol the dreamer means, not a look-alike classical term (وشي = حرير).
+  const queryTokens = tokenize(normalizeDialectText(dreamText)).filter(
     (t) => t.length > 1 && !STOPWORDS.has(t),
   );
   if (queryTokens.length === 0) return [];
@@ -127,7 +130,8 @@ export function buildRagContext(dreamText: string, k = 6): string {
     .join("\n");
   return (
     "مقتطفات من مراجع تفسير الأحلام الكلاسيكية (المصدر: تفسير الأحلام لابن سيرين) " +
-    "ذات الصلة برموز هذا الحلم. اعتمد عليها في تفسيرك ولا تخرج عنها بلا داعٍ:\n" +
+    "قد تكون ذات صلة برموز هذا الحلم. استرشد بها فيما يخص الرموز التي قصدها الرائي " +
+    "فعلاً، وتجاهل أي مقتطف لا يطابق المعنى المقصود (فقد يتشابه اللفظ ويختلف المعنى):\n" +
     lines
   );
 }
@@ -174,7 +178,8 @@ export function formatReferences(entries: KbEntry[]): string {
   const lines = entries.map((h) => `- [${h.symbol}] ${h.text}`).join("\n");
   return (
     "مقتطفات من مراجع تفسير الأحلام الكلاسيكية (المصدر: تفسير الأحلام لابن سيرين) " +
-    "ذات الصلة برموز هذا الحلم. اعتمد عليها في تفسيرك ولا تخرج عنها بلا داعٍ:\n" +
+    "قد تكون ذات صلة برموز هذا الحلم. استرشد بها فيما يخص الرموز التي قصدها الرائي " +
+    "فعلاً، وتجاهل أي مقتطف لا يطابق المعنى المقصود (فقد يتشابه اللفظ ويختلف المعنى):\n" +
     lines
   );
 }

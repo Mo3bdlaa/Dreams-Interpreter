@@ -87,8 +87,15 @@ export function isAIConfigured(): boolean {
   return Boolean(process.env.AI_API_KEY);
 }
 
-const MODEL = () => process.env.AI_MODEL || "gpt-4o-mini";
-const MAX_TOKENS = () => Number(process.env.AI_MAX_TOKENS) || 1024;
+// One or more models (comma-separated in AI_MODEL), tried in order. Free
+// OpenRouter models get rate-limited (429) often, so we fall back to the next
+// one on failure instead of dropping the reply.
+const MODELS = (): string[] =>
+  (process.env.AI_MODEL || "google/gemma-4-31b-it:free")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+const MAX_TOKENS = () => Number(process.env.AI_MAX_TOKENS) || 1500;
 // Some free OpenRouter models are "reasoning" models that spend the whole
 // token budget thinking and return empty content. Set AI_DISABLE_REASONING=true
 // to turn that off (OpenRouter-specific param, ignored elsewhere).
@@ -106,21 +113,31 @@ async function chatComplete(
   messages: ChatTurn[],
   temperature: number,
 ): Promise<string> {
-  const body: Record<string, unknown> = {
-    model: MODEL(),
-    temperature,
-    max_tokens: MAX_TOKENS(),
-    messages,
-  };
-  if (DISABLE_REASONING()) body.reasoning = { enabled: false };
-
-  // Cast: `reasoning` is an OpenRouter extension not in the OpenAI types.
-  const completion = await client.chat.completions.create(
-    body as unknown as Parameters<typeof client.chat.completions.create>[0],
-  );
-  const msg = (completion as { choices: { message: { content?: string | null; reasoning?: string | null } }[] })
-    .choices[0]?.message;
-  return (msg?.content || msg?.reasoning || "").trim();
+  let lastErr: unknown;
+  for (const model of MODELS()) {
+    const body: Record<string, unknown> = {
+      model,
+      temperature,
+      max_tokens: MAX_TOKENS(),
+      messages,
+    };
+    if (DISABLE_REASONING()) body.reasoning = { enabled: false };
+    try {
+      // Cast: `reasoning` is an OpenRouter extension not in the OpenAI types.
+      const completion = await client.chat.completions.create(
+        body as unknown as Parameters<typeof client.chat.completions.create>[0],
+      );
+      const msg = (completion as { choices: { message: { content?: string | null; reasoning?: string | null } }[] })
+        .choices[0]?.message;
+      const text = (msg?.content || msg?.reasoning || "").trim();
+      if (text) return text; // else fall through to the next model
+    } catch (e) {
+      lastErr = e;
+      console.error(`[ai] model ${model} failed:`, (e as Error)?.message || e);
+    }
+  }
+  if (lastErr) console.error("[ai] all models failed");
+  return "";
 }
 
 /**
@@ -181,31 +198,44 @@ export async function* streamDreamReply(
     ? `${SYSTEM_PROMPT}\n\n${reference}`
     : SYSTEM_PROMPT;
 
-  const body: Record<string, unknown> = {
-    model: MODEL(),
-    temperature: 0.7,
-    max_tokens: MAX_TOKENS(),
-    stream: true,
-    messages: [
-      { role: "system", content: systemContent },
-      ...history.map((m) => ({ role: m.role, content: m.content })),
-    ],
-  };
-  if (DISABLE_REASONING()) body.reasoning = { enabled: false };
+  const messages = [
+    { role: "system", content: systemContent },
+    ...history.map((m) => ({ role: m.role, content: m.content })),
+  ];
 
-  const stream = (await client.chat.completions.create(
-    body as unknown as Parameters<typeof client.chat.completions.create>[0],
-  )) as unknown as AsyncIterable<{
-    choices: { delta?: { content?: string | null; reasoning?: string | null } }[];
-  }>;
-
+  // Try each configured model in turn. If a model errors before producing any
+  // text (e.g. a 429 rate-limit), fall back to the next; once tokens start
+  // flowing we commit to that model.
   let any = false;
-  for await (const chunk of stream) {
-    const delta = chunk.choices[0]?.delta;
-    const piece = delta?.content || delta?.reasoning || "";
-    if (piece) {
-      any = true;
-      yield piece;
+  for (const model of MODELS()) {
+    const body: Record<string, unknown> = {
+      model,
+      temperature: 0.7,
+      max_tokens: MAX_TOKENS(),
+      stream: true,
+      messages,
+    };
+    if (DISABLE_REASONING()) body.reasoning = { enabled: false };
+
+    try {
+      const stream = (await client.chat.completions.create(
+        body as unknown as Parameters<typeof client.chat.completions.create>[0],
+      )) as unknown as AsyncIterable<{
+        choices: { delta?: { content?: string | null; reasoning?: string | null } }[];
+      }>;
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta;
+        const piece = delta?.content || delta?.reasoning || "";
+        if (piece) {
+          any = true;
+          yield piece;
+        }
+      }
+      if (any) return; // completed successfully on this model
+    } catch (e) {
+      console.error(`[ai] stream model ${model} failed:`, (e as Error)?.message || e);
+      if (any) return; // partial output already sent; don't restart
     }
   }
   if (!any) {

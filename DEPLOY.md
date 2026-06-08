@@ -45,8 +45,8 @@ openssl rand -base64 48      # => AUTH_SECRET
 | `AUTH_SECRET` | السرّ المُولّد (الخطوة 2) |
 | `AI_API_KEY` | مفتاح المزوّد (OpenRouter/OpenAI…) |
 | `AI_BASE_URL` | `https://openrouter.ai/api/v1` |
-| `AI_MODEL` | `z-ai/glm-4.5-air:free` |
-| `AI_MAX_TOKENS` | `1200` |
+| `AI_MODEL` | `google/gemma-4-31b-it:free,moonshotai/kimi-k2.6:free,meta-llama/llama-3.3-70b-instruct:free` (سلسلة بديلة تلقائية عند الـ 429) |
+| `AI_MAX_TOKENS` | `1500` |
 | `AI_DISABLE_REASONING` | `true` (لموديلات reasoning المجانية) |
 | `AI_EMBED_MODEL` | *(اختياري)* `nvidia/llama-nemotron-embed-vl-1b-v2:free` لتفعيل الاسترجاع الدلالي |
 | `ADMIN_EMAILS` | *(اختياري)* إيميلك للوصول للوحة `/admin` (عرض وإدارة كل المستخدمين) |

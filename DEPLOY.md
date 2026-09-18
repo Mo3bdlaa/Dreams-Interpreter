@@ -49,6 +49,7 @@ openssl rand -base64 48      # => AUTH_SECRET
 | `AI_MAX_TOKENS` | `1500` |
 | `AI_DISABLE_REASONING` | `true` (لموديلات reasoning المجانية) |
 | `AI_EMBED_MODEL` | *(لا تضعه)* الاسترجاع الدلالي **مفعّل تلقائياً** مع OpenRouter. ضع `off` لتعطيله |
+| `AI_RATE_LIMIT_PER_HOUR` | *(اختياري)* عدد التفاسير لكل مستخدم في الساعة — الافتراضي ٣٠، و`0` يعطّل الحدّ |
 | `ADMIN_EMAILS` | *(اختياري)* إيميلك للوصول للوحة `/admin` (عرض وإدارة كل المستخدمين) |
 
 > بدون `AI_API_KEY` يعمل التطبيق بوضع fallback (استرجاع مباشر من المراجع).

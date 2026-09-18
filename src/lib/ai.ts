@@ -15,6 +15,7 @@ import { embedQuery, isEmbeddingConfigured } from "./embed";
 import { isSemanticReady, semanticRank } from "./semantic";
 import { dialectHints, normalizeDialectText } from "./dialect";
 import { normalizeArabic, stripArticle } from "./arabic";
+import { symbolVerdicts, penalty } from "./feedback-signal";
 
 /**
  * Build the grounding reference block for a dream, and return the exact
@@ -61,9 +62,19 @@ async function buildGrounding(
   };
 
   // Lexical candidates per turn, newest turn's first.
-  const lexical = ordered.flatMap((t) =>
+  const lexicalRaw = ordered.flatMap((t) =>
     retrieve(t, k * 3).filter((h) => h.symbolMatch),
   );
+
+  // Demote symbols readers have repeatedly rejected. Order only — nothing is
+  // removed, since a thumbs-down judges the whole reply, not one excerpt.
+  const verdicts = await symbolVerdicts();
+  const lexical = verdicts.size
+    ? lexicalRaw
+        .map((h, i) => ({ h, i, p: penalty(h.symbol, verdicts) }))
+        .sort((a, b) => a.p - b.p || a.i - b.i)
+        .map((x) => x.h)
+    : lexicalRaw;
 
   // One embedding call for the conversation as a whole — the meaning of a
   // follow-up ("وبعدين غرقت") only makes sense together with what came before.
@@ -416,11 +427,18 @@ export async function summarizeDream(
       {
         role: "system",
         content:
-          "لخّص محادثة تفسير حلم في خلاصة منظّمة بصيغة ماركداون. ابدأ بسطر واحد فقط: " +
-          "'النوع: رؤيا' أو 'النوع: أضغاث' أو 'النوع: حديث نفس' (اختر الأنسب). ثم عنوانان: " +
-          "'### 🌙 الحلم' (سرد موجز متماسك لكامل الحلم كما رواه الرائي)، ثم " +
-          "'### 🔮 التفسير النهائي' (خلاصة التفسير في ٣-٥ أسطر، تجمع أهم الرموز ودلالاتها وتنتهي بكلمة مطمئنة). " +
-          "اكتب بالعربية باختصار ودون أسئلة أو روابط.",
+          "أنت تُحرِّر خلاصةً تُحفظ وتُقرأ لاحقاً في سجلّ أحلام صاحبها، فهي آخر ما " +
+          "سيبقى من هذه المحادثة. اكتبها بصيغة ماركداون هكذا:\n" +
+          "سطرٌ أول وحده: 'النوع: رؤيا' أو 'النوع: أضغاث' أو 'النوع: حديث نفس'. " +
+          "اختر بحسب ما ظهر في المحادثة: الرؤيا الصالحة المبشّرة، أو أضغاث الأحلام " +
+          "المشوَّشة التي لا تأويل لها، أو حديث النفس الذي يعكس هموم اليقظة.\n" +
+          "ثم '### 🌙 الحلم': سرد موجز متماسك لكامل ما رواه الرائي عبر المحادثة " +
+          "كلها لا آخر رسالة فقط، بضمير المتكلم وبترتيب ما حدث.\n" +
+          "ثم '### 🔮 التفسير النهائي': خلاصة التأويل في ثلاثة إلى خمسة أسطر " +
+          "متّصلة تشرح إلامَ ترمز الرؤيا في حياته وتنتهي بكلمة مطمئنة.\n" +
+          "التزم بما قيل في المحادثة: لا تُضف رمزاً لم يَرِد فيها، ولا تأويلاً لم " +
+          "يُذكر، ولا تنسب قولاً لكتابٍ لم يُذكر. واحذف أرقام الاستشهاد ومواضع " +
+          "الشكّ والأسئلة والروابط. اكتب بالعربية وحدها.",
       },
       { role: "user", content: transcript },
     ],
@@ -469,7 +487,14 @@ export async function generateOverallSummary(
       {
         role: "system",
         content:
-          "أنت مساعد يكتب ملخصاً عاماً ولطيفاً عن أحلام مستخدم بناءً على قائمة أحلامه. اذكر الأنماط المتكررة، الرموز الشائعة، والمزاج العام، وقدّم ملاحظة مطمئنة أو نصيحة عامة. اكتب بالعربية في فقرات قصيرة واضحة، دون مبالغة ودون جزم بالغيب.",
+          "تكتب نظرةً عامة على رحلة صاحب هذه الأحلام، من قائمة أحلامه فقط. " +
+          "ابحث عمّا لا يظهر في الحلم الواحد: الرموز التي تتكرّر عبر الأحلام، " +
+          "وتحوّل المزاج مع الوقت، والمواضيع التي تعود بصيغٍ مختلفة. اربط ما " +
+          "يترابط فعلاً ولا تفتعل نمطاً من حلمين متباعدين.\n" +
+          "اكتب فقراتٍ قصيرة بالعربية، بأسلوبٍ لطيفٍ مطمئن، واختم بملاحظةٍ طيبة " +
+          "أو نصيحةٍ عامة. لا تُعِد تفسير حلمٍ بعينه، ولا تجزم بالغيب، ولا تُضف " +
+          "رمزاً ليس في القائمة. وإن كانت الأحلام قليلة فقل ذلك بصراحة بدل " +
+          "استخلاص نمطٍ لا تكفي له.",
       },
       {
         role: "user",

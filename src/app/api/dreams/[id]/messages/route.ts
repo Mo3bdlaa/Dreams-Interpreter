@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ensureSchema } from "@/db/init";
 import { getSession } from "@/lib/auth";
+import { checkInterpretationQuota, quotaMessage } from "@/lib/rate-limit";
 import { getOwnedDream, addUserMessageAndReply } from "@/lib/dreams";
 
 // Allow time for AI generation + embedding on serverless (Vercel).
@@ -19,6 +20,14 @@ export async function POST(req: Request, { params }: Params) {
   const dream = await getOwnedDream(id, session.userId);
   if (!dream)
     return NextResponse.json({ error: "الحلم غير موجود" }, { status: 404 });
+
+  const quota = await checkInterpretationQuota(session.userId);
+  if (!quota.allowed) {
+    return NextResponse.json(
+      { error: quotaMessage(quota) },
+      { status: 429, headers: { "Retry-After": String(quota.retryAfter) } },
+    );
+  }
 
   const { content } = await req.json().catch(() => ({}));
   if (!content || !String(content).trim()) {

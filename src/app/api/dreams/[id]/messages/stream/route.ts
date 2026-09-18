@@ -8,6 +8,7 @@ import {
   refreshDreamMeta,
 } from "@/lib/dreams";
 import { streamDreamReply, citedFooterFor, type ChatMessage } from "@/lib/ai";
+import { checkInterpretationQuota, quotaMessage } from "@/lib/rate-limit";
 
 // Allow time for AI generation + embedding on serverless (Vercel).
 export const maxDuration = 60;
@@ -25,6 +26,14 @@ export async function POST(req: Request, { params }: Params) {
   const { id } = await params;
   const dream = await getOwnedDream(id, session.userId);
   if (!dream) return new Response("الحلم غير موجود", { status: 404 });
+
+  const quota = await checkInterpretationQuota(session.userId);
+  if (!quota.allowed) {
+    return new Response(quotaMessage(quota), {
+      status: 429,
+      headers: { "Retry-After": String(quota.retryAfter) },
+    });
+  }
 
   const { content } = await req.json().catch(() => ({}));
   if (!content || !String(content).trim()) {

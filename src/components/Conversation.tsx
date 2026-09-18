@@ -20,6 +20,7 @@ export function Conversation({ dreamId }: { dreamId: string }) {
   const [dream, setDream] = useState<DreamSummaryRow | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [feedback, setFeedback] = useState<Record<string, "up" | "down">>({});
+  const [sendError, setSendError] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -54,6 +55,7 @@ export function Conversation({ dreamId }: { dreamId: string }) {
     const content = text.trim();
     if (!content || sending) return;
     setText("");
+    setSendError(null);
     setSending(true);
 
     const userId = "u-" + Date.now();
@@ -66,7 +68,11 @@ export function Conversation({ dreamId }: { dreamId: string }) {
 
     try {
       const res = await api.sendMessageStream(dreamId, content);
-      if (!res.ok || !res.body) throw new Error("stream failed");
+      if (!res.ok || !res.body) {
+        // Hitting the hourly cap deserves an explanation, not a silent revert.
+        const detail = await res.text().catch(() => "");
+        throw new Error(detail || "stream failed");
+      }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -88,9 +94,11 @@ export function Conversation({ dreamId }: { dreamId: string }) {
       } catch {
         /* keep streamed content */
       }
-    } catch {
+    } catch (e) {
       setMessages((m) => m.filter((x) => x.id !== userId && x.id !== asstId));
       setText(content);
+      const msg = (e as Error)?.message;
+      setSendError(msg && msg !== "stream failed" ? msg : "تعذّر إرسال الرسالة، حاول مرة أخرى.");
     } finally {
       setSending(false);
     }
@@ -248,6 +256,11 @@ export function Conversation({ dreamId }: { dreamId: string }) {
 
       {/* Composer */}
       <div className="sticky bottom-0 bg-night-950/40 py-3 backdrop-blur-sm">
+        {sendError && (
+          <div className="mb-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
+            {sendError}
+          </div>
+        )}
         <VoiceTextarea
           value={text}
           onChange={setText}

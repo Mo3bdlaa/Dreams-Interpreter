@@ -6,6 +6,7 @@ import { getSession } from "@/lib/auth";
 import { newId } from "@/lib/utils";
 import { retrieveSources } from "@/lib/rag";
 import { serverError } from "@/lib/api-error";
+import { invalidateVerdicts } from "@/lib/feedback-signal";
 
 const REASONS = new Set([
   "التفسير غير صحيح",
@@ -87,6 +88,9 @@ export async function POST(req: Request) {
       reason: cleanReason,
       symbols: JSON.stringify(symbols),
     });
+
+    // Next retrieval should already reflect this verdict.
+    invalidateVerdicts();
 
     return NextResponse.json({ ok: true, rating, reason: cleanReason });
   } catch (e) {

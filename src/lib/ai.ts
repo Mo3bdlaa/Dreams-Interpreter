@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { matchSymbols } from "./dream-symbols";
 import {
   buildSourcesFooter,
+  shortSource,
   buildCitedFooter,
   retrieve,
   entryById,
@@ -463,11 +464,12 @@ function fallbackInterpretation(text: string): string {
   }
 
   const body = hits
-    .map((h) => `• **${h.symbol}**: ${h.text}`)
+    .filter((h) => h.symbolMatch)
+    .map((h) => `• **${h.symbol}** — ${shortSource(h.source)}: ${h.text}`)
     .join("\n\n");
 
   return (
-    "بناءً على مراجع تفسير الأحلام لابن سيرين، هذه أقرب الدلالات لرموز حلمك:\n\n" +
+    "بناءً على معاجم تفسير الأحلام الكلاسيكية، هذه أقرب الدلالات لرموز حلمك:\n\n" +
     body +
     "\n\n(ملاحظة: لم يُضبط مزوّد ذكاء اصطناعي بعد، لذا هذا استرجاع مباشر من المراجع. اضبط `AI_API_KEY` للحصول على تفسير تفاعلي يربط الرموز بحالتك.)\n\nوتذكّر أن تفسير الأحلام ظنٌّ واجتهاد، والخير فيما اختاره الله." +
     buildSourcesFooter(text)

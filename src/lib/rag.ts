@@ -3,6 +3,7 @@ import {
   normalizeArabic,
   tokenize,
   tokenMatches,
+  stripArticle,
   STOPWORDS,
 } from "./arabic";
 import { normalizeDialectText } from "./dialect";
@@ -34,6 +35,14 @@ interface Indexed {
 const df = new Map<string, number>(); // document frequency per token
 let avgLen = 0;
 
+// Two-letter symbols collide with ordinary words far more often than they
+// appear as real dream symbols, so they do not win on an exact-name match —
+// except these, which are genuine and common enough to be worth the risk.
+// (Function words like من/لي/لم never reach here: they are stopwords.)
+const SHORT_SYMBOLS = new Set(
+  ["حج", "دم", "يد", "فم", "اب", "قط", "سن", "جن", "ظل", "لص", "عش", "جد"],
+);
+
 const INDEX: Indexed[] = ENTRIES.map((entry) => {
   const symbolTokens = tokenize(entry.symbol);
   const contentTokens = tokenize(`${entry.symbol} ${entry.text}`).filter(
@@ -42,11 +51,11 @@ const INDEX: Indexed[] = ENTRIES.map((entry) => {
   const termFreq = new Map<string, number>();
   for (const t of contentTokens) termFreq.set(t, (termFreq.get(t) || 0) + 1);
   for (const t of termFreq.keys()) df.set(t, (df.get(t) || 0) + 1);
-  // Two-letter symbols (بم، بق، بط…) collide with ordinary words far more
-  // often than they appear as real dream symbols, so they never win on an
-  // exact-name match alone.
-  const letters = symbolTokens.join("").length;
-  const specific = symbolTokens.length > 1 || letters >= 3;
+  const joined = symbolTokens.join("");
+  const specific =
+    symbolTokens.length > 1 ||
+    joined.length >= 3 ||
+    SHORT_SYMBOLS.has(stripArticle(joined));
   return { entry, symbolTokens, specific, termFreq, len: contentTokens.length };
 });
 

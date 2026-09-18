@@ -10,7 +10,7 @@
 // to the user. Keys are already-normalized tokens (see normalizeArabic: همزات
 // → ا، ى → ي، ة → ه، تشكيل محذوف).
 
-import { normalizeArabic } from "./arabic";
+import { normalizeArabic, stripArticle } from "./arabic";
 
 const DIALECT: Record<string, string> = {
   // الوجه — العامية المصرية «وش» ومشتقاتها (وليس «الوِشاية» ولا «الوَشْي»).
@@ -82,11 +82,56 @@ const DIALECT: Record<string, string> = {
   بتطاردني: "خوف",
   خايف: "خوف",
   خوفت: "خوف",
+
+  // ── المفردات الحديثة ─────────────────────────────────────────────────────
+  // الرمز موجود في المعاجم لكن باسمه الكلاسيكي، فيكتب الرائي اللفظ الدارج
+  // ولا يصل إليه الاسترجاع. (ما لا أصل له أصلاً — كالموبايل والامتحان —
+  // يُترك بلا ربط ليصرّح التفسير بالاجتهاد بدل اختلاق نسبة.)
+  قطه: "قط",
+  قطط: "قط",
+  بسه: "قط",
+  ميت: "موت",
+  المتوفي: "موت",
+  متوفي: "موت",
+  متوفيه: "موت",
+  مقابر: "قبر",
+  المقابر: "قبر",
+  مدافن: "قبر",
+  حريقه: "نار",
+  حريق: "نار",
+  اتحرق: "نار",
+  حرقان: "نار",
+  طياره: "طيران",
+  مستشفي: "مرض",
+  المستشفي: "مرض",
+  دكتور: "طبيب",
+  الدكتور: "طبيب",
+  نجحت: "ظفر",
+  نجاح: "ظفر",
 };
 
-/** Map a single normalized token to its MSA equivalent (or return it as-is). */
+/**
+ * Map a single normalized token to its MSA equivalent (or return it as-is).
+ *
+ * Dream text glues particles onto words ("بقطة"، "والدكتور"), so a bare lookup
+ * misses most real occurrences. We retry without the definite article and
+ * without one leading proclitic (و/ف/ب/ك/ل), guarding on length so short roots
+ * that merely start with those letters (بحر، بيت، لبن) are never gutted.
+ */
 export function mapDialectToken(token: string): string {
-  return DIALECT[token] ?? token;
+  const direct = DIALECT[token];
+  if (direct) return direct;
+
+  const bare = stripArticle(token);
+  if (bare !== token && DIALECT[bare]) return DIALECT[bare];
+
+  if (token.length >= 4 && "وفبكل".includes(token[0])) {
+    const rest = token.slice(1);
+    if (DIALECT[rest]) return DIALECT[rest];
+    const restBare = stripArticle(rest);
+    if (restBare !== rest && DIALECT[restBare]) return DIALECT[restBare];
+  }
+  return token;
 }
 
 /**
@@ -114,8 +159,8 @@ export function normalizeDialectText(text: string): string {
 export function dialectHints(text: string): string {
   const seen = new Map<string, string>();
   for (const tok of normalizeArabic(text).split(" ")) {
-    const msa = DIALECT[tok];
-    if (msa && !seen.has(tok)) seen.set(tok, msa);
+    const msa = mapDialectToken(tok);
+    if (msa !== tok && !seen.has(tok)) seen.set(tok, msa);
   }
   if (seen.size === 0) return "";
   const pairs = [...seen]

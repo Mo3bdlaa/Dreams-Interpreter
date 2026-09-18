@@ -19,6 +19,26 @@ describe("dialect normalization", () => {
     expect(mapDialectToken("شبه")).toBe("شبه");
   });
 
+  it("sees through an attached article or proclitic", () => {
+    // Dream text glues particles on: "بقطة"، "والدكتور"، "المقابر".
+    expect(mapDialectToken("بقطه")).toBe("قط");
+    expect(mapDialectToken("للدكتور")).toBe("طبيب");
+    expect(mapDialectToken("المقابر")).toBe("قبر");
+  });
+
+  it("does not gut short roots that merely start with a proclitic", () => {
+    for (const w of ["بحر", "بيت", "لبن", "وجه", "كلب"]) {
+      expect(mapDialectToken(w)).toBe(w);
+    }
+  });
+
+  it("maps modern words onto their classical symbol", () => {
+    expect(mapDialectToken("قطه")).toBe("قط");
+    expect(mapDialectToken("ميت")).toBe("موت");
+    expect(mapDialectToken("حريق")).toBe("نار");
+    expect(mapDialectToken("مستشفي")).toBe("مرض");
+  });
+
   it("rewrites a colloquial sentence for retrieval", () => {
     expect(normalizeDialectText("لقيت واحد وشه شبه وشي")).toBe(
       "لقيت واحد وجه شبه وجه",

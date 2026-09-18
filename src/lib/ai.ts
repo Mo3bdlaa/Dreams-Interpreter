@@ -23,14 +23,21 @@ import { normalizeArabic, stripArticle } from "./arabic";
  * semantic neighbours are included — loose BM25 matches are deliberately left
  * out: handing the model unrelated entries is what made it "interpret"
  * symbols that were never in the dream.
+ *
+ * Grounding spans the WHOLE conversation, not just the newest turn. A dream is
+ * told across several messages ("وكمان كان فيه قطة"), and rebuilding from the
+ * last message alone left follow-up turns with no references for symbols still
+ * under discussion — precisely when the model starts inventing. The newest turn
+ * is still served first; earlier turns fill whatever slots remain.
  */
 async function buildGrounding(
-  text: string,
+  turns: string[],
   k = 8,
 ): Promise<{ block: string; refs: KbEntry[] }> {
-  // Ask for more candidates than we keep: three books cover the same symbol,
-  // so the raw list is dominated by a couple of symbols.
-  const lexical = retrieve(text, k * 3);
+  // Newest turn first: its symbols matter most to the reply being written.
+  const ordered = turns.filter((t) => t.trim()).reverse();
+  const combined = ordered.join("\n");
+
   const picked: KbEntry[] = [];
   const seen = new Set<string>();
   const perSymbol = new Map<string, number>();
@@ -53,9 +60,16 @@ async function buildGrounding(
     picked.push(e);
   };
 
+  // Lexical candidates per turn, newest turn's first.
+  const lexical = ordered.flatMap((t) =>
+    retrieve(t, k * 3).filter((h) => h.symbolMatch),
+  );
+
+  // One embedding call for the conversation as a whole — the meaning of a
+  // follow-up ("وبعدين غرقت") only makes sense together with what came before.
   const semantic: KbEntry[] = [];
   if (isEmbeddingConfigured() && isSemanticReady()) {
-    const qv = await embedQuery(text);
+    const qv = await embedQuery(combined);
     if (qv) {
       for (const s of semanticRank(qv, k)) {
         if (s.score > 0.35) {
@@ -69,17 +83,22 @@ async function buildGrounding(
   // Pass 1 — breadth: at most two books per symbol, so every symbol the
   // dreamer mentioned gets represented before any one of them gets a third
   // view. Precise lexical matches first, then semantic neighbours.
-  for (const h of lexical) if (h.symbolMatch) add(h, 2);
+  for (const h of lexical) add(h, 2);
   for (const e of semantic) add(e, 2);
   // Pass 2 — depth: spend any leftover slots on further views of the same
   // symbols (valuable when the dream only had one or two symbols).
-  for (const h of lexical) if (h.symbolMatch) add(h, Infinity);
+  for (const h of lexical) add(h, Infinity);
   for (const e of semantic) add(e, Infinity);
 
   const refs = picked;
-  const hint = dialectHints(text);
+  const hint = dialectHints(combined);
   const block = [hint, formatReferences(refs)].filter(Boolean).join("\n\n");
   return { block, refs };
+}
+
+/** Every user turn in the conversation, oldest first. */
+function userTurns(history: ChatMessage[]): string[] {
+  return history.filter((m) => m.role === "user").map((m) => m.content);
 }
 
 export interface ChatMessage {
@@ -199,9 +218,7 @@ export async function interpretDream(
 ): Promise<string> {
   const lastUser = [...history].reverse().find((m) => m.role === "user");
   // Retrieve grounding references from the Ibn-Sirin corpus (RAG).
-  const grounding = lastUser
-    ? await buildGrounding(lastUser.content)
-    : { block: "", refs: [] as KbEntry[] };
+  const grounding = await buildGrounding(userTurns(history));
 
   const client = getClient();
   if (!client) {
@@ -238,9 +255,7 @@ export async function* streamDreamReply(
   history: ChatMessage[],
 ): AsyncGenerator<string, KbEntry[]> {
   const lastUser = [...history].reverse().find((m) => m.role === "user");
-  const grounding = lastUser
-    ? await buildGrounding(lastUser.content)
-    : { block: "", refs: [] as KbEntry[] };
+  const grounding = await buildGrounding(userTurns(history));
   const client = getClient();
 
   if (!client) {

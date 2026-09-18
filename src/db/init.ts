@@ -34,8 +34,21 @@ const STATEMENTS = [
     content TEXT NOT NULL,
     created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   )`,
+  `CREATE TABLE IF NOT EXISTS feedback (
+    id TEXT PRIMARY KEY,
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    dream_id TEXT NOT NULL REFERENCES dreams(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    rating TEXT NOT NULL,
+    reason TEXT,
+    symbols TEXT,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_dreams_user ON dreams(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_messages_dream ON messages(dream_id)`,
+  // One verdict per reader per reply — re-rating overwrites.
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_msg_user
+     ON feedback(message_id, user_id)`,
 ];
 
 // Additive column migrations for databases created before a column existed.

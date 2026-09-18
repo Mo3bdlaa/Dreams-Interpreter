@@ -5,6 +5,7 @@ import Link from "next/link";
 import { api, type ChatMsg, type DreamSummaryRow } from "@/lib/client";
 import { VoiceTextarea } from "./VoiceTextarea";
 import { Markdown } from "./Markdown";
+import { FeedbackBar } from "./FeedbackBar";
 import { moodMeta } from "./format";
 
 function toDateInput(ms: number | null): string {
@@ -18,6 +19,7 @@ function toDateInput(ms: number | null): string {
 export function Conversation({ dreamId }: { dreamId: string }) {
   const [dream, setDream] = useState<DreamSummaryRow | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [feedback, setFeedback] = useState<Record<string, "up" | "down">>({});
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -32,6 +34,7 @@ export function Conversation({ dreamId }: { dreamId: string }) {
       const data = await api.getDream(dreamId);
       setDream(data.dream);
       setMessages(data.messages);
+      setFeedback(data.feedback ?? {});
       setTitleDraft(data.dream.title);
     } finally {
       setLoading(false);
@@ -78,10 +81,10 @@ export function Conversation({ dreamId }: { dreamId: string }) {
           m.map((x) => (x.id === asstId ? { ...x, content: acc } : x)),
         );
       }
-      // Refresh metadata (mood/symbols/title) now that the turn is saved.
+      // Reload the thread so the streamed reply gets its real database id
+      // (the feedback control needs it) along with refreshed metadata.
       try {
-        const data = await api.getDream(dreamId);
-        setDream(data.dream);
+        await load();
       } catch {
         /* keep streamed content */
       }
@@ -228,7 +231,16 @@ export function Conversation({ dreamId }: { dreamId: string }) {
           m.role === "assistant" && m.content === "" ? (
             <Bubble key={m.id} role="assistant" content="… يفسّر حلمك" pending />
           ) : (
-            <Bubble key={m.id} role={m.role} content={m.content} />
+            <Bubble
+              key={m.id}
+              role={m.role}
+              content={m.content}
+              footer={
+                m.role === "assistant" ? (
+                  <FeedbackBar messageId={m.id} initial={feedback[m.id]} />
+                ) : null
+              }
+            />
           ),
         )}
         <div ref={bottomRef} />
@@ -288,10 +300,12 @@ function Bubble({
   role,
   content,
   pending,
+  footer,
 }: {
   role: "user" | "assistant";
   content: string;
   pending?: boolean;
+  footer?: React.ReactNode;
 }) {
   const isUser = role === "user";
   return (
@@ -305,6 +319,7 @@ function Bubble({
       >
         {!isUser && !pending && <div className="mb-1 text-xs opacity-60">🌙 مُعبِّر</div>}
         {pending ? content : <Markdown content={content} />}
+        {footer}
       </div>
     </div>
   );

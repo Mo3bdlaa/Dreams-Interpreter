@@ -65,3 +65,34 @@ export const messages = sqliteTable("messages", {
 export type User = typeof users.$inferSelect;
 export type Dream = typeof dreams.$inferSelect;
 export type Message = typeof messages.$inferSelect;
+
+/**
+ * Reader verdicts on an interpretation ("هل التفسير ظبط؟").
+ *
+ * Besides showing quality in the admin panel, each row snapshots the symbols
+ * retrieval actually grounded that reply on — so ratings become a real eval
+ * set: which retrieved symbols correlate with good interpretations.
+ */
+export const feedback = sqliteTable("feedback", {
+  id: text("id").primaryKey(),
+  messageId: text("message_id")
+    .notNull()
+    .references(() => messages.id, { onDelete: "cascade" }),
+  dreamId: text("dream_id")
+    .notNull()
+    .references(() => dreams.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  // "up" = التفسير ظبط، "down" = ما ظبطش
+  rating: text("rating", { enum: ["up", "down"] }).notNull(),
+  // Optional short reason, mostly for "down".
+  reason: text("reason"),
+  // JSON array of the symbols grounded for this reply, captured at rating time.
+  symbols: text("symbols"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch() * 1000)`),
+});
+
+export type Feedback = typeof feedback.$inferSelect;

@@ -44,6 +44,14 @@ interface Stats {
   byMood: { key: string | null; count: number }[];
   byKind: { key: string | null; count: number }[];
   topSymbols: { symbol: string; count: number }[];
+  feedback?: {
+    up: number;
+    down: number;
+    total: number;
+    accuracy: number | null;
+    reasons: { key: string; count: number }[];
+    symbolsInRejected: { symbol: string; count: number }[];
+  };
 }
 
 const MOOD_LABEL: Record<string, string> = {
@@ -205,6 +213,69 @@ export function AdminPanel() {
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+          {stats.feedback && stats.feedback.total > 0 && (
+            <div className="card p-4">
+              <h3 className="mb-3 text-sm font-bold text-night-100/80">
+                جودة التفسير (من تقييم القرّاء)
+              </h3>
+              <div className="mb-3 flex flex-wrap items-center gap-4">
+                <div>
+                  <div className="text-2xl font-bold">
+                    {stats.feedback.accuracy}%
+                  </div>
+                  <div className="text-xs text-night-100/50">نسبة الرضا</div>
+                </div>
+                <div className="text-sm">
+                  <span className="text-emerald-300">👍 {stats.feedback.up}</span>
+                  <span className="mx-2 text-night-100/30">·</span>
+                  <span className="text-rose-300">👎 {stats.feedback.down}</span>
+                  <span className="mr-2 text-xs text-night-100/50">
+                    من {stats.feedback.total} تقييم
+                  </span>
+                </div>
+              </div>
+
+              {stats.feedback.reasons.length > 0 && (
+                <div className="mb-3">
+                  <div className="mb-1.5 text-xs text-night-100/50">
+                    أسباب عدم الرضا
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {stats.feedback.reasons.map((r) => (
+                      <span
+                        key={r.key}
+                        className="rounded-full bg-rose-400/10 px-3 py-1 text-sm text-rose-200"
+                      >
+                        {r.key}
+                        <span className="mr-1.5 text-xs opacity-60">{r.count}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stats.feedback.symbolsInRejected.length > 0 && (
+                <div>
+                  <div className="mb-1.5 text-xs text-night-100/50">
+                    رموز استُرجعت في تفاسير مرفوضة (مرشّحة للمراجعة)
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {stats.feedback.symbolsInRejected.map((s) => (
+                      <span
+                        key={s.symbol}
+                        className="rounded-full bg-white/10 px-3 py-1 text-sm"
+                      >
+                        {s.symbol}
+                        <span className="mr-1.5 text-xs text-night-100/50">
+                          {s.count}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>

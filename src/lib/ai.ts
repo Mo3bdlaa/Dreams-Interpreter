@@ -28,11 +28,19 @@ async function buildGrounding(
   const lexical = retrieve(text, k);
   const picked: KbEntry[] = [];
   const seen = new Set<string>();
+  // The books overlap — thedreams.co's Ibn-Sirin dictionary reproduces Nabulsi
+  // passages verbatim in places. Feeding the same passage twice wastes context
+  // and makes one view look like two independent witnesses.
+  const fingerprints = new Set<string>();
+  const fingerprint = (e: KbEntry) =>
+    e.text.replace(/[\sً-ْ]/g, "").slice(0, 120);
   const add = (e?: KbEntry) => {
-    if (e && !seen.has(e.id)) {
-      seen.add(e.id);
-      picked.push(e);
-    }
+    if (!e || seen.has(e.id)) return;
+    const fp = fingerprint(e);
+    if (fingerprints.has(fp)) return;
+    fingerprints.add(fp);
+    seen.add(e.id);
+    picked.push(e);
   };
 
   // 1) Precise lexical symbol-name matches.
@@ -59,7 +67,7 @@ export interface ChatMessage {
   content: string;
 }
 
-const SYSTEM_PROMPT = `أنت "مُعبِّر"، مفسّر أحلام خبير يستند إلى معجم تفسير الأحلام المنسوب لابن سيرين، لكنك لا تكتفي بنقل المراجع، بل تفهم الحلم وتُعمِل العقل في تأويله كما يفعل المفسّر الحاذق.
+const SYSTEM_PROMPT = `أنت "مُعبِّر"، مفسّر أحلام خبير يستند إلى معاجم تفسير الأحلام الكلاسيكية (ابن سيرين، و«تعطير الأنام» للنابلسي، و«الإشارات في علم العبارات» لابن شاهين)، لكنك لا تكتفي بنقل المراجع، بل تفهم الحلم وتُعمِل العقل في تأويله كما يفعل المفسّر الحاذق.
 
 == فكّر هكذا قبل أن تكتب (لا تُظهر هذه الخطوات، بل تظهر ثمرتها) ==
 1. افهم الحلم كاملاً كقصّة واحدة: ماذا حدث بالضبط؟ مَن الأشخاص وما صلتهم بالرائي؟ ما الأفعال وتسلسلها؟ أين جرى؟ ما المشاعر أثناءه وبعده؟ وكيف انتهى؟

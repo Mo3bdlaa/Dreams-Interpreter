@@ -123,11 +123,56 @@ export async function getAdminStats() {
     .slice(0, 12)
     .map(([symbol, count]) => ({ symbol, count }));
 
+  // Interpretation quality, straight from readers' verdicts.
+  const ratingRows = await db
+    .select({ key: schema.feedback.rating, count: sql<number>`count(*)` })
+    .from(schema.feedback)
+    .groupBy(schema.feedback.rating);
+  const up = Number(ratingRows.find((r) => r.key === "up")?.count ?? 0);
+  const down = Number(ratingRows.find((r) => r.key === "down")?.count ?? 0);
+
+  const reasonRows = await db
+    .select({ key: schema.feedback.reason, count: sql<number>`count(*)` })
+    .from(schema.feedback)
+    .where(eq(schema.feedback.rating, "down"))
+    .groupBy(schema.feedback.reason);
+
+  // Which grounded symbols show up in replies readers rejected — the fastest
+  // pointer at retrieval entries that mislead the interpreter.
+  const downRows = await db
+    .select({ symbols: schema.feedback.symbols })
+    .from(schema.feedback)
+    .where(eq(schema.feedback.rating, "down"));
+  const badTally = new Map<string, number>();
+  for (const r of downRows) {
+    if (!r.symbols) continue;
+    try {
+      for (const s of JSON.parse(r.symbols) as string[])
+        badTally.set(s, (badTally.get(s) || 0) + 1);
+    } catch {
+      /* ignore malformed */
+    }
+  }
+
   return {
     totals: { totalUsers, totalDreams, activeDreams, totalMessages, recentSignups },
     byMood: byMood.map((r) => ({ key: r.key, count: Number(r.count) })),
     byKind: byKind.map((r) => ({ key: r.key, count: Number(r.count) })),
     topSymbols,
+    feedback: {
+      up,
+      down,
+      total: up + down,
+      // Share of rated interpretations readers accepted.
+      accuracy: up + down > 0 ? Math.round((up / (up + down)) * 100) : null,
+      reasons: reasonRows
+        .map((r) => ({ key: r.key || "بدون سبب", count: Number(r.count) }))
+        .sort((a, b) => b.count - a.count),
+      symbolsInRejected: [...badTally.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([symbol, count]) => ({ symbol, count })),
+    },
   };
 }
 

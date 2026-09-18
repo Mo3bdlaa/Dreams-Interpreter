@@ -73,9 +73,18 @@ describe("retrieval grounding precision", () => {
 
 describe("citation integrity", () => {
   const refs = [
-    { id: "a", symbol: "بحر", source: "س", url: "https://x/b", text: "t" },
-    { id: "b", symbol: "نور", source: "س", url: "https://x/n", text: "t" },
-    { id: "c", symbol: "خبز", source: "س", url: "https://x/k", text: "t" },
+    {
+      id: "a", symbol: "بحر", source: "تفسير الأحلام لابن سيرين",
+      url: "https://x/b", text: "t1",
+    },
+    {
+      id: "b", symbol: "نور", source: "تعطير الأنام في تعبير المنام للنابلسي",
+      url: "https://x/n", text: "t2",
+    },
+    {
+      id: "c", symbol: "خبز", source: "الإشارات في علم العبارات لابن شاهين",
+      url: "https://x/k", text: "t3",
+    },
   ] as KbEntry[];
 
   it("cites only the references the reply actually used", () => {
@@ -86,11 +95,17 @@ describe("citation integrity", () => {
     expect(footer).not.toContain("خبز"); // never referenced by the reply
   });
 
+  it("attributes each citation to its book", () => {
+    const footer = buildCitedFooter("البحر سعة [1]، والنور هداية [2].", refs);
+    expect(footer).toContain("بحر — ابن سيرين");
+    expect(footer).toContain("نور — النابلسي");
+  });
+
   it("keeps the inline numbers so markers and footer agree", () => {
     // The reply leans on [3] only — the footer must say [3], not renumber to [1].
     const footer = buildCitedFooter("والخبز رزقٌ حاضر [3].", refs);
-    expect(footer).toContain("[3] [خبز]");
-    expect(footer).not.toContain("[1] [خبز]");
+    expect(footer).toContain("[3] [خبز — ابن شاهين]");
+    expect(footer).not.toContain("[1] [خبز");
   });
 
   it("does not claim sources when the reply cited none", () => {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { ensureSchema } from "@/db/init";
 import { getSession } from "@/lib/auth";
@@ -20,9 +20,24 @@ export async function GET(_req: Request, { params }: Params) {
     return NextResponse.json({ error: "الحلم غير موجود" }, { status: 404 });
 
   const messages = await getMessages(id);
+  // The reader's own verdicts, so the UI can show which replies they rated.
+  const votes = await db
+    .select({
+      messageId: schema.feedback.messageId,
+      rating: schema.feedback.rating,
+    })
+    .from(schema.feedback)
+    .where(
+      and(
+        eq(schema.feedback.dreamId, id),
+        eq(schema.feedback.userId, session.userId),
+      ),
+    );
+
   return NextResponse.json({
     dream: { ...dream, symbols: dream.symbols ? JSON.parse(dream.symbols) : [] },
     messages,
+    feedback: Object.fromEntries(votes.map((v) => [v.messageId, v.rating])),
   });
 }
 

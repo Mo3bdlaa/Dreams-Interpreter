@@ -172,7 +172,15 @@ export function buildSourcesFooter(dreamText: string, k = 6): string {
   const sources = retrieveSources(dreamText, k);
   if (sources.length === 0) return "";
   const links = sources.map((s) => `[${s.symbol}](${s.url})`).join(" · ");
-  return `\n\n---\n📚 **المصادر** (تفسير ابن سيرين): ${links}`;
+  return `\n\n---\n📚 **المصادر**: ${links}`;
+}
+
+/** Compact book name for citations ("تعطير الأنام … للنابلسي" → "النابلسي"). */
+export function shortSource(source: string): string {
+  if (source.includes("سيرين")) return "ابن سيرين";
+  if (source.includes("نابلسي")) return "النابلسي";
+  if (source.includes("شاهين")) return "ابن شاهين";
+  return "منتخب";
 }
 
 const BY_ID = new Map(ENTRIES.map((e) => [e.id, e]));
@@ -182,16 +190,20 @@ export function entryById(id: string): KbEntry | undefined {
 
 /** Format a set of reference entries into a NUMBERED grounding block, so the
  *  interpreter can cite them by index and we can verify what it actually
- *  leaned on. */
+ *  leaned on. Each excerpt carries its book so attribution stays exact. */
 export function formatReferences(entries: KbEntry[]): string {
   if (entries.length === 0) return "";
   const lines = entries
-    .map((h, i) => `[${i + 1}] «${h.symbol}»: ${h.text}`)
+    .map(
+      (h, i) => `[${i + 1}] «${h.symbol}» — ${shortSource(h.source)}: ${h.text}`,
+    )
     .join("\n");
   return (
-    "مقتطفات مرقّمة من معجم تفسير الأحلام لابن سيرين، قد تكون ذات صلة برموز هذا الحلم. " +
+    "مقتطفات مرقّمة من معاجم تفسير الأحلام الكلاسيكية (ابن سيرين، والنابلسي في " +
+    "«تعطير الأنام»، وابن شاهين في «الإشارات»)، قد تكون ذات صلة برموز هذا الحلم. " +
     "هي أدلّة تستنبط منها لا نصوصٌ تنقلها: استرشد بما يطابق المعنى الذي قصده الرائي، " +
     "وتجاهل أي مقتطف يتشابه لفظاً ويختلف معنى، ثم انسج تفسيراً واحداً مترابطاً.\n" +
+    "إن اختلف كتابان في رمزٍ واحد فاذكر الوجهين باختصار ونسب كلَّ قولٍ لصاحبه.\n" +
     "إلزامي: كلّما بنيتَ جملةً على مقتطف، اكتب رقمه بين قوسين مربعين في آخر الجملة. " +
     "مثال: «والنورُ هدايةٌ وغِنىً بعد فقر، فنزولُه عليك بشارةُ فرجٍ بعد ضيق [2].» " +
     "لا تذكر رقماً لم تستند إليه، ولا رقماً غير موجود في القائمة أدناه.\n" +
@@ -227,11 +239,13 @@ export function buildCitedFooter(reply: string, refs: KbEntry[]): string {
     // at the same entry the footer lists.
     const links = used
       .sort((a, b) => a.n - b.n)
-      .map(({ n, entry }) => `[${n}] [${entry.symbol}](${entry.url})`)
+      .map(
+        ({ n, entry }) =>
+          `[${n}] [${entry.symbol} — ${shortSource(entry.source)}](${entry.url})`,
+      )
       .join(" · ");
     return (
-      `\n\n---\n📚 **المراجع المستنَد إليها** (معجم ابن سيرين — الرابط يفتح صفحة حرف الرمز): ` +
-      links
+      `\n\n---\n📚 **المراجع المستنَد إليها**: ` + links
     );
   }
 
@@ -239,7 +253,7 @@ export function buildCitedFooter(reply: string, refs: KbEntry[]): string {
   // retrieval results as sources the interpretation used.
   const links = refs
     .slice(0, 6)
-    .map((e) => `[${e.symbol}](${e.url})`)
+    .map((e) => `[${e.symbol} — ${shortSource(e.source)}](${e.url})`)
     .join(" · ");
   return (
     `\n\n---\n🔎 **رموز ذات صلة في المعجم** (لم يستند إليها التفسير صراحةً): ` +

@@ -62,8 +62,20 @@ export const api = {
 
   getDream: (id: string) =>
     fetch(`/api/dreams/${id}`).then((r) =>
-      handle<{ dream: DreamSummaryRow; messages: ChatMsg[] }>(r),
+      handle<{
+        dream: DreamSummaryRow;
+        messages: ChatMsg[];
+        feedback?: Record<string, "up" | "down">;
+      }>(r),
     ),
+
+  /** Rate one interpretation ("هل التفسير ظبط؟"). */
+  sendFeedback: (messageId: string, rating: "up" | "down", reason?: string) =>
+    fetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId, rating, reason }),
+    }).then(handle),
 
   patchDream: (id: string, body: { title?: string; dreamDate?: number | null }) =>
     fetch(`/api/dreams/${id}`, {

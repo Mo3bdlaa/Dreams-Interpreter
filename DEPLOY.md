@@ -48,11 +48,12 @@ openssl rand -base64 48      # => AUTH_SECRET
 | `AI_MODEL` | `deepseek/deepseek-v4-flash-0731:free,inclusionai/ling-3.0-flash-vl:free,nvidia/nemotron-3-ultra-550b-a55b:free` (سلسلة بديلة تلقائية عند الـ 429) |
 | `AI_MAX_TOKENS` | `1500` |
 | `AI_DISABLE_REASONING` | `true` (لموديلات reasoning المجانية) |
-| `AI_EMBED_MODEL` | *(اختياري)* `nvidia/llama-nemotron-embed-vl-1b-v2:free` لتفعيل الاسترجاع الدلالي |
+| `AI_EMBED_MODEL` | *(لا تضعه)* الاسترجاع الدلالي **مفعّل تلقائياً** مع OpenRouter. ضع `off` لتعطيله |
 | `ADMIN_EMAILS` | *(اختياري)* إيميلك للوصول للوحة `/admin` (عرض وإدارة كل المستخدمين) |
 
 > بدون `AI_API_KEY` يعمل التطبيق بوضع fallback (استرجاع مباشر من المراجع).
-> بدون `AI_EMBED_MODEL` يبقى الاسترجاع لفظياً (المتجهات المضغوطة مُضمّنة في الريبو).
+> الاسترجاع الدلالي يعمل تلقائياً مع OpenRouter (المتجهات مُضمّنة في الريبو)؛
+> `AI_EMBED_MODEL=off` يُبقي الاسترجاع لفظياً ومحلياً بالكامل.
 
 ## 5) Deploy
 
@@ -64,8 +65,10 @@ openssl rand -base64 48      # => AUTH_SECRET
 
 - **مهلة الـ functions**: مضبوطة على 60s لمسارات الـ AI (`maxDuration`) لتفادي
   انقطاع التوليد على الخطة المجانية.
-- **حجم الـ bundle**: قاعدة المعرفة (~1.4MB) والمتجهات المضغوطة (~6MB) مُضمّنة —
+- **حجم الـ bundle**: قاعدة المعرفة (~4MB) والمتجهات المضغوطة (~15MB) مُضمّنة —
   ضمن حدود Vercel.
-- **الخصوصية**: تفعيل `AI_EMBED_MODEL` يرسل نص الحلم لمزوّد الـ embeddings. احذفه
-  لإبقاء كل الاسترجاع محلياً.
+- **حدّ الموديلات المجانية** على OpenRouter ٢٠ طلباً/دقيقة، والاسترجاع الدلالي
+  يستهلك طلباً إضافياً مع كل تفسير. لو ضغطت الحصة، عطّله بـ `AI_EMBED_MODEL=off`.
+- **الخصوصية**: الاسترجاع الدلالي (المفعّل تلقائياً مع OpenRouter) يرسل نص الحلم
+  لمزوّد الـ embeddings. ضع `AI_EMBED_MODEL=off` لإبقاء كل الاسترجاع محلياً.
 - **لا تضع المفاتيح في الكود** — فقط في Environment Variables على Vercel.

@@ -25,38 +25,55 @@ async function buildGrounding(
   text: string,
   k = 8,
 ): Promise<{ block: string; refs: KbEntry[] }> {
-  const lexical = retrieve(text, k);
+  // Ask for more candidates than we keep: three books cover the same symbol,
+  // so the raw list is dominated by a couple of symbols.
+  const lexical = retrieve(text, k * 3);
   const picked: KbEntry[] = [];
   const seen = new Set<string>();
+  const perSymbol = new Map<string, number>();
   // The books overlap — thedreams.co's Ibn-Sirin dictionary reproduces Nabulsi
   // passages verbatim in places. Feeding the same passage twice wastes context
   // and makes one view look like two independent witnesses.
   const fingerprints = new Set<string>();
   const fingerprint = (e: KbEntry) =>
     e.text.replace(/[\sً-ْ]/g, "").slice(0, 120);
-  const add = (e?: KbEntry) => {
-    if (!e || seen.has(e.id)) return;
+
+  /** @param cap max entries kept per symbol on this pass */
+  const add = (e: KbEntry | undefined, cap: number) => {
+    if (!e || seen.has(e.id) || picked.length >= k) return;
+    if ((perSymbol.get(e.symbol) ?? 0) >= cap) return;
     const fp = fingerprint(e);
     if (fingerprints.has(fp)) return;
     fingerprints.add(fp);
     seen.add(e.id);
+    perSymbol.set(e.symbol, (perSymbol.get(e.symbol) ?? 0) + 1);
     picked.push(e);
   };
 
-  // 1) Precise lexical symbol-name matches.
-  for (const h of lexical) if (h.symbolMatch) add(h);
-
-  // 2) Semantic neighbours (by meaning) if embeddings are available.
+  const semantic: KbEntry[] = [];
   if (isEmbeddingConfigured() && isSemanticReady()) {
     const qv = await embedQuery(text);
     if (qv) {
       for (const s of semanticRank(qv, k)) {
-        if (s.score > 0.35) add(entryById(s.id));
+        if (s.score > 0.35) {
+          const e = entryById(s.id);
+          if (e) semantic.push(e);
+        }
       }
     }
   }
 
-  const refs = picked.slice(0, k);
+  // Pass 1 — breadth: at most two books per symbol, so every symbol the
+  // dreamer mentioned gets represented before any one of them gets a third
+  // view. Precise lexical matches first, then semantic neighbours.
+  for (const h of lexical) if (h.symbolMatch) add(h, 2);
+  for (const e of semantic) add(e, 2);
+  // Pass 2 — depth: spend any leftover slots on further views of the same
+  // symbols (valuable when the dream only had one or two symbols).
+  for (const h of lexical) if (h.symbolMatch) add(h, Infinity);
+  for (const e of semantic) add(e, Infinity);
+
+  const refs = picked;
   const hint = dialectHints(text);
   const block = [hint, formatReferences(refs)].filter(Boolean).join("\n\n");
   return { block, refs };

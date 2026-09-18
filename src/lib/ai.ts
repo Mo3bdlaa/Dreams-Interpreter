@@ -106,9 +106,14 @@ export function isAIConfigured(): boolean {
 
 // One or more models (comma-separated in AI_MODEL), tried in order. Free
 // OpenRouter models get rate-limited (429) often, so we fall back to the next
-// one on failure instead of dropping the reply.
+// one on failure instead of dropping the reply. Chain picked by benchmarking
+// the live free catalogue on Arabic dream interpretation: pure Arabic (no
+// language leakage), correct colloquial reading, and valid [n] citations.
 const MODELS = (): string[] =>
-  (process.env.AI_MODEL || "google/gemma-4-31b-it:free")
+  (
+    process.env.AI_MODEL ||
+    "deepseek/deepseek-v4-flash-0731:free,inclusionai/ling-3.0-flash-vl:free,nvidia/nemotron-3-ultra-550b-a55b:free,google/gemma-4-31b-it:free"
+  )
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);

@@ -37,12 +37,24 @@ export function stripArticle(token: string): string {
 // dream-side token (not the dictionary term) and require a long-enough stem.
 const PROCLITICS = ["و", "ف", "ب", "ك", "ل"];
 
+// Inflectional suffixes a dream token may carry on top of a dictionary term
+// (normalized forms). Restricting to this set stops bogus prefix matches such
+// as "لوحدي" → "لوح" (suffix "دي" is not inflectional) while still allowing
+// "اسناني" → "اسنان" and "نورا" → "نور".
+const SUFFIXES = new Set([
+  "ي", "ه", "ا", "ك", "ن", "و",
+  "ات", "ان", "ين", "ون", "ها", "هم", "هن", "كم", "كن", "نا", "يه", "اه", "وا",
+]);
+
 function coreMatch(a: string, b: string): boolean {
   if (a === b) return true;
-  // The dream token (a) may carry inflectional suffixes on the dictionary
-  // term (b), e.g. "نورا" -> "نور". We only allow the term to be a prefix of
-  // the token (not the reverse) to avoid citing longer unrelated symbols.
-  if (b.length >= 3 && a.startsWith(b) && a.length - b.length <= 2) return true;
+  // The dream token (a) may carry an inflectional suffix on the dictionary
+  // term (b). We only allow the term to be a prefix of the token (not the
+  // reverse) to avoid citing longer unrelated symbols.
+  if (b.length >= 3 && a.startsWith(b)) {
+    const suffix = a.slice(b.length);
+    if (suffix.length <= 2 && SUFFIXES.has(suffix)) return true;
+  }
   return false;
 }
 
@@ -66,12 +78,33 @@ export function tokenize(text: string): string[] {
   return normalizeArabic(text).split(" ").filter(Boolean);
 }
 
-// Very common Arabic words that carry no retrieval signal.
+// Words that carry no retrieval signal. This list is load-bearing for
+// grounding quality: the corpus contains classical symbols whose spelling
+// collides with ordinary Arabic function words (لي، بعد، شبه، غير…), so
+// without them here a plain sentence like "بعدين لقيت راجل" retrieves the
+// entries for "بعد" and "لي" and the model is told they are symbols of the
+// dream — which is exactly how invented interpretations start.
 export const STOPWORDS = new Set(
   [
+    // particles, prepositions, pronouns
     "في", "من", "على", "الى", "عن", "مع", "او", "ان", "انه", "اذا", "التي",
     "الذي", "هذا", "هذه", "ذلك", "كان", "قد", "ما", "لا", "هو", "هي", "كل",
     "به", "له", "ثم", "وقد", "وهو", "وهي", "يدل", "تدل", "دليل", "ربما",
     "رؤيه", "المنام", "الاحلام", "الحلم", "رايت", "حلمت", "وكان", "فان",
+    "لي", "لها", "لهم", "لك", "لكم", "بي", "بك", "بها", "بهم", "فيه", "فيها",
+    "فيهم", "منه", "منها", "منهم", "عليه", "عليها", "عني", "عندي", "عند",
+    "عندما", "بعد", "بعده", "بعدها", "قبل", "قبلها", "بين", "تحت", "فوق",
+    "امام", "خلف", "حول", "حتي", "لكن", "لان", "لانه", "ايضا", "اذ", "كما",
+    "مثل", "شبه", "غير", "سوي", "كذلك", "هناك", "هنا", "الان", "جدا",
+    "كثير", "كثيرا", "قليل", "بعض", "بعضهم", "جميع", "نفسي", "نفسه", "نفسها",
+    // narration verbs
+    "شفت", "لقيت", "وجدت", "كنت", "كانت", "بقيت", "صرت", "اصبحت", "قلت",
+    "قال", "قالت", "جاء", "جه", "طلع", "نزل", "دخلت", "خرجت", "مشيت",
+    "حاولت", "حسيت", "شعرت", "فجاه", "بعدين", "وبعدين", "وبعد", "راح",
+    // Egyptian / colloquial filler
+    "انا", "انت", "انتي", "احنا", "هم", "دا", "ده", "دي", "دول", "اللي",
+    "علشان", "عشان", "كده", "كدا", "اوي", "خالص", "يعني", "ازاي", "ليه",
+    "فين", "امتي", "مش", "مفيش", "عايز", "عاوز", "بتاع", "شويه", "تاني",
+    "برضه", "لسه", "خلاص", "بقي", "ماشي", "قوي", "بالظبط", "وحدي", "لوحدي",
   ].map(normalizeArabic),
 );

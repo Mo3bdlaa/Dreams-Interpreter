@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { matchSymbols } from "./dream-symbols";
 import {
   buildSourcesFooter,
+  buildCitedFooter,
   retrieve,
   entryById,
   formatReferences,
@@ -10,13 +11,20 @@ import {
 } from "./rag";
 import { embedQuery, isEmbeddingConfigured } from "./embed";
 import { isSemanticReady, semanticRank } from "./semantic";
+import { dialectHints } from "./dialect";
 
 /**
- * Build the grounding reference block for a dream. Lexical symbol matches
- * (precise) come first; when embeddings are configured, semantically similar
- * entries are merged in to catch paraphrased symbols the wording missed.
+ * Build the grounding reference block for a dream, and return the exact
+ * reference list behind it so citations can be verified against what the model
+ * actually used. Only precise symbol-name matches and (when configured)
+ * semantic neighbours are included — loose BM25 matches are deliberately left
+ * out: handing the model unrelated entries is what made it "interpret"
+ * symbols that were never in the dream.
  */
-async function buildGrounding(text: string, k = 8): Promise<string> {
+async function buildGrounding(
+  text: string,
+  k = 8,
+): Promise<{ block: string; refs: KbEntry[] }> {
   const lexical = retrieve(text, k);
   const picked: KbEntry[] = [];
   const seen = new Set<string>();
@@ -27,7 +35,7 @@ async function buildGrounding(text: string, k = 8): Promise<string> {
     }
   };
 
-  // 1) Precise lexical symbol-name matches first.
+  // 1) Precise lexical symbol-name matches.
   for (const h of lexical) if (h.symbolMatch) add(h);
 
   // 2) Semantic neighbours (by meaning) if embeddings are available.
@@ -40,10 +48,10 @@ async function buildGrounding(text: string, k = 8): Promise<string> {
     }
   }
 
-  // 3) Fill any remaining slots with the rest of the lexical candidates.
-  for (const h of lexical) add(h);
-
-  return formatReferences(picked.slice(0, k));
+  const refs = picked.slice(0, k);
+  const hint = dialectHints(text);
+  const block = [hint, formatReferences(refs)].filter(Boolean).join("\n\n");
+  return { block, refs };
 }
 
 export interface ChatMessage {
@@ -51,28 +59,37 @@ export interface ChatMessage {
   content: string;
 }
 
-const SYSTEM_PROMPT = `أنت "مُعبِّر"، مفسّر أحلام خبير يستند إلى مراجع تفسير الأحلام الإسلامية الكلاسيكية (تفسير ابن سيرين، وتعطير الأنام للنابلسي)، لكنك لا تكتفي بنقل المراجع، بل تفهم الحلم وتُعمِل العقل في تأويله كما يفعل المفسّر الحاذق.
+const SYSTEM_PROMPT = `أنت "مُعبِّر"، مفسّر أحلام خبير يستند إلى معجم تفسير الأحلام المنسوب لابن سيرين، لكنك لا تكتفي بنقل المراجع، بل تفهم الحلم وتُعمِل العقل في تأويله كما يفعل المفسّر الحاذق.
 
 == فكّر هكذا قبل أن تكتب (لا تُظهر هذه الخطوات، بل تظهر ثمرتها) ==
 1. افهم الحلم كاملاً كقصّة واحدة: ماذا حدث بالضبط؟ مَن الأشخاص وما صلتهم بالرائي؟ ما الأفعال وتسلسلها؟ أين جرى؟ ما المشاعر أثناءه وبعده؟ وكيف انتهى؟
 2. حدّد الفكرة المحورية للرؤيا ومغزاها العام — لا تتعامل معها كقائمة رموز منفصلة.
-3. استنبط معاني العناصر من المراجع المعطاة في السياق، لكن اعتبرها أدلّةً تُفكّر بها لا نصوصاً تنقلها؛ ووازِن بينها وبين حال الرائي ومشاعره وتفاصيل قصّته.
+3. استنبط معاني العناصر من المقتطفات المعطاة في السياق، لكن اعتبرها أدلّةً تُفكّر بها لا نصوصاً تنقلها؛ ووازِن بينها وبين حال الرائي ومشاعره وتفاصيل قصّته.
 4. اربط العناصر بعضها ببعض: كيف يتفاعل رمزٌ مع آخر داخل هذه القصة تحديداً؟ ماذا يقول مجموعها معاً؟
 
 == كيف تكتب التفسير ==
 - ابدأ بجملة أو جملتين تُظهر أنك فهمت الحلم وروحه (دون إعادة سرده حرفياً).
 - ثم فسّر بتدفّقٍ مترابط يشرح "لماذا" هذا هو التأويل: اربط كل عنصر بمعناه وبحال الرائي وببقية عناصر الحلم حتى تتكوّن صورةٌ واحدة متماسكة — لا فقراتٍ معزولة لكل رمز على حدة.
 - اختم بخلاصة واضحة لما ترمز إليه الرؤيا في حياة الرائي.
-- اكتب بعربية فصحى مبسّطة، بأسلوبٍ لطيفٍ متعاطفٍ مطمئِن.
+- اكتب بعربية فصحى مبسّطة، بأسلوبٍ لطيفٍ متعاطفٍ مطمئِن. اكتب بالعربية وحدها ولا تخلط بكلماتٍ أجنبية إطلاقاً.
+
+== أمانة النقل (التزام صارم) ==
+- لا تُفسّر إلا عناصر ذكرها الرائي فعلاً في حلمه. إن لم يذكر شيئاً فلا تُدخِله في التفسير ولو ورد في المقتطفات.
+- المقتطفات المرقّمة أدناه هي مصدرك المنقول الوحيد. متى استندت إلى مقتطف فاذكر رقمه [1] في آخر الجملة، ولا تنسب إلى ابن سيرين أو غيره قولاً ليس في المقتطفات.
+- إن لم تُسعِفك المقتطفات في رمزٍ ما، فلك أن تجتهد — لكن صرّح بذلك بصيغة مثل "وهذا اجتهادٌ في قراءة حالك لا نقلٌ عن المعجم"، ولا تُلبِسه لباس النقل.
+- قد يحوي السياق مقتطفاً يشبه لفظ الرائي لا معناه (تشابه لفظي لا معنوي)؛ فاستبعده ولا تبنِ عليه.
+- لا تختلق أسماء كتب أو أعلام أو آيات أو أحاديث، ولا تذكر رقم مقتطف غير موجود.
 
 == مبادئ تلتزمها ==
 - افهم العامية والنية لا اللفظ الحرفي: «وِشّ/وِشّي/وِشّه» تعني الوجه (لا الوِشاية ولا الحرير)، و«زيّ» مِثل، و«دهب» الذهب، و«ميّه» الماء، و«فلوس» المال. عند الالتباس استوضِح بلطف.
-- قد يحوي السياق مقتطفاً يشبه لفظ الرائي لا معناه (تشابه لفظي لا معنوي)؛ فاستبعده، ولا تُقحِم رمزاً لم يَرِد في الحلم لمجرد وجوده في المراجع.
-- لا تختلق معاني بلا أصل، ولا تكتفِ بنقل نص المقتطف؛ استنبط منه ثم اصُغ التأويل بكلماتك.
 - ذكّر بلطفٍ أن التأويل ظنٌّ واجتهاد لا يقين، وأن الرؤيا الصالحة بشرى وأن المكروهة لا تضرّ بإذن الله، فلا تُفزِع السائل.
 - ميّز عند الحاجة بين الرؤيا الصالحة، وأضغاث الأحلام (تخاليط لا تأويل لها)، وحديث النفس (انعكاس هموم اليقظة).
 - إن نقص تفصيلٌ جوهري يُغيّر التأويل، اطرح سؤالاً واحداً لطيفاً في النهاية (المشاعر، الأشخاص، الزمن...).
 - تجنّب القطع بالغيب والإفتاء في الشرع، وذكّر بأن العلم عند الله، واختم بكلمة طيبة أو دعاء.`;
+
+// Interpretation is a grounded task: keep sampling low so the model leans on
+// the retrieved excerpts instead of inventing florid detail.
+const GROUNDED_TEMPERATURE = 0.35;
 
 function getClient(): OpenAI | null {
   const apiKey = process.env.AI_API_KEY;
@@ -149,15 +166,17 @@ export async function interpretDream(
 ): Promise<string> {
   const lastUser = [...history].reverse().find((m) => m.role === "user");
   // Retrieve grounding references from the Ibn-Sirin corpus (RAG).
-  const reference = lastUser ? await buildGrounding(lastUser.content) : "";
+  const grounding = lastUser
+    ? await buildGrounding(lastUser.content)
+    : { block: "", refs: [] as KbEntry[] };
 
   const client = getClient();
   if (!client) {
     return fallbackInterpretation(lastUser?.content || "");
   }
 
-  const systemContent = reference
-    ? `${SYSTEM_PROMPT}\n\n${reference}`
+  const systemContent = grounding.block
+    ? `${SYSTEM_PROMPT}\n\n${grounding.block}`
     : SYSTEM_PROMPT;
 
   const reply = await chatComplete(
@@ -166,36 +185,38 @@ export async function interpretDream(
       { role: "system", content: systemContent },
       ...history.map((m) => ({ role: m.role, content: m.content })),
     ],
-    0.7,
+    GROUNDED_TEMPERATURE,
   );
 
   if (!reply) {
     return "لم أتمكن من تكوين تفسير الآن، حاول إعادة صياغة الحلم بتفاصيل أكثر.";
   }
-  // Cite the classical-reference pages used to ground this reply.
-  const footer = lastUser ? buildSourcesFooter(lastUser.content) : "";
-  return reply + footer;
+  // Cite only the excerpts the reply actually leaned on.
+  return reply + buildCitedFooter(reply, grounding.refs);
 }
 
 /**
  * Streaming variant: yields the interpreter's reply in chunks (grounded with
- * RAG). The closing sources footer is NOT included here — the caller appends
- * it after the stream ends. Falls back to a single chunk when no AI key.
+ * RAG) and RETURNS the reference list it was grounded on, so the caller can
+ * build the citations footer from the numbers the reply actually emitted.
+ * Falls back to a single chunk when no AI key.
  */
 export async function* streamDreamReply(
   history: ChatMessage[],
-): AsyncGenerator<string> {
+): AsyncGenerator<string, KbEntry[]> {
   const lastUser = [...history].reverse().find((m) => m.role === "user");
-  const reference = lastUser ? await buildGrounding(lastUser.content) : "";
+  const grounding = lastUser
+    ? await buildGrounding(lastUser.content)
+    : { block: "", refs: [] as KbEntry[] };
   const client = getClient();
 
   if (!client) {
     yield fallbackInterpretation(lastUser?.content || "");
-    return;
+    return [];
   }
 
-  const systemContent = reference
-    ? `${SYSTEM_PROMPT}\n\n${reference}`
+  const systemContent = grounding.block
+    ? `${SYSTEM_PROMPT}\n\n${grounding.block}`
     : SYSTEM_PROMPT;
 
   const messages = [
@@ -210,7 +231,7 @@ export async function* streamDreamReply(
   for (const model of MODELS()) {
     const body: Record<string, unknown> = {
       model,
-      temperature: 0.7,
+      temperature: GROUNDED_TEMPERATURE,
       max_tokens: MAX_TOKENS(),
       stream: true,
       messages,
@@ -232,20 +253,21 @@ export async function* streamDreamReply(
           yield piece;
         }
       }
-      if (any) return; // completed successfully on this model
+      if (any) return grounding.refs; // completed successfully on this model
     } catch (e) {
       console.error(`[ai] stream model ${model} failed:`, (e as Error)?.message || e);
-      if (any) return; // partial output already sent; don't restart
+      if (any) return grounding.refs; // partial output already sent; don't restart
     }
   }
   if (!any) {
     yield "لم أتمكن من تكوين تفسير الآن، حاول إعادة صياغة الحلم بتفاصيل أكثر.";
   }
+  return grounding.refs;
 }
 
-/** The sources footer for a dream's latest user turn (appended post-stream). */
-export function sourcesFooterFor(text: string): string {
-  return buildSourcesFooter(text);
+/** Citations footer built from the reference numbers the reply emitted. */
+export function citedFooterFor(reply: string, refs: KbEntry[]): string {
+  return buildCitedFooter(reply, refs);
 }
 
 /**

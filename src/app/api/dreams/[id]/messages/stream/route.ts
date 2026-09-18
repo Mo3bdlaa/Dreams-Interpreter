@@ -7,7 +7,7 @@ import {
   saveAssistantMessage,
   refreshDreamMeta,
 } from "@/lib/dreams";
-import { streamDreamReply, sourcesFooterFor, type ChatMessage } from "@/lib/ai";
+import { streamDreamReply, citedFooterFor, type ChatMessage } from "@/lib/ai";
 
 // Allow time for AI generation + embedding on serverless (Vercel).
 export const maxDuration = 60;
@@ -44,11 +44,21 @@ export async function POST(req: Request, { params }: Params) {
     async start(controller) {
       let full = "";
       try {
-        for await (const piece of streamDreamReply(chatHistory)) {
-          full += piece;
-          controller.enqueue(encoder.encode(piece));
+        // Drive the generator manually so we can read its RETURN value — the
+        // reference list the reply was grounded on — and cite only what the
+        // reply actually leaned on.
+        const gen = streamDreamReply(chatHistory);
+        let refs: Awaited<ReturnType<typeof gen.next>>["value"] = [];
+        while (true) {
+          const { value, done } = await gen.next();
+          if (done) {
+            refs = value ?? [];
+            break;
+          }
+          full += value;
+          controller.enqueue(encoder.encode(value as string));
         }
-        const footer = sourcesFooterFor(userContent);
+        const footer = citedFooterFor(full, Array.isArray(refs) ? refs : []);
         if (footer) {
           full += footer;
           controller.enqueue(encoder.encode(footer));

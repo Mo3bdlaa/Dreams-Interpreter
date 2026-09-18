@@ -52,3 +52,29 @@ export function normalizeDialectText(text: string): string {
     .filter(Boolean)
     .join(" ");
 }
+
+/**
+ * An explicit gloss of the dialect words present in THIS dream, handed to the
+ * model alongside the references.
+ *
+ * Normalizing the retrieval query is not enough on its own: the model still
+ * reads the raw colloquial text, and weaker models misread it (one rendered
+ * «وشه شبه وشي» as "a face resembling something" instead of "his face looks
+ * like mine"). Spelling the mapping out makes any model read it correctly.
+ */
+export function dialectHints(text: string): string {
+  const seen = new Map<string, string>();
+  for (const tok of normalizeArabic(text).split(" ")) {
+    const msa = DIALECT[tok];
+    if (msa && !seen.has(tok)) seen.set(tok, msa);
+  }
+  if (seen.size === 0) return "";
+  const pairs = [...seen]
+    .map(([d, m]) => `«${d}» = «${m}»`)
+    .join("، ");
+  return (
+    "ملاحظة لغوية: الرائي يروي حلمه بالعامية. في نصّه هذه الألفاظ بمعانيها الفصيحة: " +
+    pairs +
+    ". افهمها بهذا المعنى ولا تؤوّلها على ظاهر لفظها."
+  );
+}

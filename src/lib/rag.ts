@@ -26,6 +26,7 @@ const ENTRIES = kb as KbEntry[];
 interface Indexed {
   entry: KbEntry;
   symbolTokens: string[]; // normalized tokens of the symbol name
+  specific: boolean; // symbol is distinctive enough to trust as an exact match
   termFreq: Map<string, number>; // content token -> count
   len: number;
 }
@@ -41,7 +42,12 @@ const INDEX: Indexed[] = ENTRIES.map((entry) => {
   const termFreq = new Map<string, number>();
   for (const t of contentTokens) termFreq.set(t, (termFreq.get(t) || 0) + 1);
   for (const t of termFreq.keys()) df.set(t, (df.get(t) || 0) + 1);
-  return { entry, symbolTokens, termFreq, len: contentTokens.length };
+  // Two-letter symbols (بم، بق، بط…) collide with ordinary words far more
+  // often than they appear as real dream symbols, so they never win on an
+  // exact-name match alone.
+  const letters = symbolTokens.join("").length;
+  const specific = symbolTokens.length > 1 || letters >= 3;
+  return { entry, symbolTokens, specific, termFreq, len: contentTokens.length };
 });
 
 avgLen =
@@ -89,6 +95,7 @@ export function retrieve(dreamText: string, k = 6): Retrieved[] {
     // most precise signal — an entry that is literally about a thing the
     // dreamer saw — so these always outrank loose lexical matches.
     const symbolMatch =
+      doc.specific &&
       doc.symbolTokens.length > 0 &&
       doc.symbolTokens.every((st) =>
         queryTokens.some((qt) => tokenMatches(qt, st)),
@@ -173,16 +180,70 @@ export function entryById(id: string): KbEntry | undefined {
   return BY_ID.get(id);
 }
 
-/** Format a set of reference entries into the grounding block. */
+/** Format a set of reference entries into a NUMBERED grounding block, so the
+ *  interpreter can cite them by index and we can verify what it actually
+ *  leaned on. */
 export function formatReferences(entries: KbEntry[]): string {
   if (entries.length === 0) return "";
-  const lines = entries.map((h) => `- [${h.symbol}] ${h.text}`).join("\n");
+  const lines = entries
+    .map((h, i) => `[${i + 1}] «${h.symbol}»: ${h.text}`)
+    .join("\n");
   return (
-    "مقتطفات من مراجع تفسير الأحلام الكلاسيكية (المصدر: تفسير الأحلام لابن سيرين) " +
-    "قد تكون ذات صلة برموز هذا الحلم. هي أدلّة تستنبط منها لا نصوصٌ تنقلها: " +
-    "استرشد بما يطابق المعنى الذي قصده الرائي، وتجاهل أي مقتطف يتشابه لفظاً ويختلف معنى، " +
-    "ثم انسج تفسيراً واحداً مترابطاً يربط رموز الحلم ببعضها وبحال الرائي:\n" +
+    "مقتطفات مرقّمة من معجم تفسير الأحلام لابن سيرين، قد تكون ذات صلة برموز هذا الحلم. " +
+    "هي أدلّة تستنبط منها لا نصوصٌ تنقلها: استرشد بما يطابق المعنى الذي قصده الرائي، " +
+    "وتجاهل أي مقتطف يتشابه لفظاً ويختلف معنى، ثم انسج تفسيراً واحداً مترابطاً.\n" +
+    "إلزامي: كلّما بنيتَ جملةً على مقتطف، اكتب رقمه بين قوسين مربعين في آخر الجملة. " +
+    "مثال: «والنورُ هدايةٌ وغِنىً بعد فقر، فنزولُه عليك بشارةُ فرجٍ بعد ضيق [2].» " +
+    "لا تذكر رقماً لم تستند إليه، ولا رقماً غير موجود في القائمة أدناه.\n" +
     lines
+  );
+}
+
+/**
+ * Build the closing citations footer from the reference numbers the model
+ * ACTUALLY emitted — not from a second, independent retrieval pass. This is
+ * what keeps the "sources" line honest: it can only name excerpts that were
+ * in the context and that the reply explicitly leaned on.
+ *
+ * The corpus links are per-LETTER dictionary pages (2175 symbols share 29
+ * URLs), so the footer says so rather than implying a per-symbol deep link.
+ */
+export function buildCitedFooter(reply: string, refs: KbEntry[]): string {
+  if (refs.length === 0) return "";
+
+  const used: { n: number; entry: KbEntry }[] = [];
+  const seen = new Set<string>();
+  for (const m of reply.matchAll(/\[(\d{1,2})\]/g)) {
+    const n = Number(m[1]);
+    const entry = refs[n - 1];
+    if (entry && !seen.has(entry.id)) {
+      seen.add(entry.id);
+      used.push({ n, entry });
+    }
+  }
+
+  if (used.length > 0) {
+    // Keep the ORIGINAL numbers so the inline [n] markers in the reply point
+    // at the same entry the footer lists.
+    const links = used
+      .sort((a, b) => a.n - b.n)
+      .map(({ n, entry }) => `[${n}] [${entry.symbol}](${entry.url})`)
+      .join(" · ");
+    return (
+      `\n\n---\n📚 **المراجع المستنَد إليها** (معجم ابن سيرين — الرابط يفتح صفحة حرف الرمز): ` +
+      links
+    );
+  }
+
+  // The reply cited nothing. Say that plainly instead of dressing up the
+  // retrieval results as sources the interpretation used.
+  const links = refs
+    .slice(0, 6)
+    .map((e) => `[${e.symbol}](${e.url})`)
+    .join(" · ");
+  return (
+    `\n\n---\n🔎 **رموز ذات صلة في المعجم** (لم يستند إليها التفسير صراحةً): ` +
+    links
   );
 }
 

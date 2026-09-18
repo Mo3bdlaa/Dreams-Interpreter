@@ -8,6 +8,17 @@ describe("normalizeArabic", () => {
     expect(normalizeArabic("أسد")).toBe("اسد");
     expect(normalizeArabic("ذكرى")).toBe("ذكري");
   });
+
+  it("detaches Arabic punctuation from the word it follows", () => {
+    // Left attached, "خايف،" matches nothing and the dream loses its grounding.
+    expect(normalizeArabic("خايف، وبعدين")).toBe("خايف وبعدين");
+    expect(normalizeArabic("بحر؟ نور؛ ماء.")).toBe("بحر نور ماء");
+  });
+
+  it("drops digits and tatweel", () => {
+    expect(normalizeArabic("بحـــر")).toBe("بحر");
+    expect(normalizeArabic("٣ بيوت 5")).toBe("بيوت");
+  });
 });
 
 describe("stripArticle", () => {

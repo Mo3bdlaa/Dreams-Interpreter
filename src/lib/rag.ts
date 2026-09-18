@@ -220,40 +220,108 @@ export function formatReferences(entries: KbEntry[]): string {
   );
 }
 
+/** Content words of a string: normalized, stopwords and single letters dropped. */
+function contentTokens(s: string): string[] {
+  return [
+    ...new Set(tokenize(s).filter((t) => t.length > 1 && !STOPWORDS.has(t))),
+  ];
+}
+
+/** The sentence around a position — what a citation marker actually claims. */
+function sentenceAround(text: string, index: number): string {
+  const before = Math.max(
+    text.lastIndexOf(".", index),
+    text.lastIndexOf("؟", index),
+    text.lastIndexOf("!", index),
+    text.lastIndexOf("\n", index),
+  );
+  let end = text.length;
+  for (const p of [".", "؟", "!", "\n"]) {
+    const i = text.indexOf(p, index);
+    if (i !== -1 && i < end) end = i;
+  }
+  return text.slice(before + 1, end);
+}
+
+/**
+ * How much of the citing sentence is actually echoed by the cited excerpt,
+ * as a fraction of the sentence's content words (inflection-tolerant).
+ *
+ * The model paraphrases, so this is never near 1 — it exists to catch the
+ * opposite case: a reference number attached to a claim the excerpt says
+ * nothing about, which is the one kind of fabrication the numbering scheme
+ * alone cannot prevent.
+ */
+export function citationSupport(sentence: string, excerpt: string): number {
+  const claim = contentTokens(sentence).filter((t) => !/^\d+$/.test(t));
+  if (claim.length === 0) return 0;
+  const source = contentTokens(excerpt);
+  let hits = 0;
+  for (const t of claim) {
+    if (source.some((x) => tokenMatches(t, x) || tokenMatches(x, t))) hits++;
+  }
+  return hits / claim.length;
+}
+
+// Below this share of echoed content words we treat the citation as unverified
+// rather than presenting it as a source the interpretation rests on.
+const SUPPORT_THRESHOLD = 0.15;
+
 /**
  * Build the closing citations footer from the reference numbers the model
  * ACTUALLY emitted — not from a second, independent retrieval pass. This is
  * what keeps the "sources" line honest: it can only name excerpts that were
  * in the context and that the reply explicitly leaned on.
  *
- * The corpus links are per-LETTER dictionary pages (2175 symbols share 29
- * URLs), so the footer says so rather than implying a per-symbol deep link.
+ * Each citation is then checked against the excerpt it points at, so a number
+ * pinned to an unrelated claim is reported as unverified instead of lending it
+ * borrowed authority.
  */
 export function buildCitedFooter(reply: string, refs: KbEntry[]): string {
   if (refs.length === 0) return "";
 
-  const used: { n: number; entry: KbEntry }[] = [];
+  const used: { n: number; entry: KbEntry; support: number }[] = [];
   const seen = new Set<string>();
   for (const m of reply.matchAll(/\[(\d{1,2})\]/g)) {
     const n = Number(m[1]);
     const entry = refs[n - 1];
-    if (entry && !seen.has(entry.id)) {
-      seen.add(entry.id);
-      used.push({ n, entry });
-    }
+    if (!entry || seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    const sentence = sentenceAround(reply, m.index ?? 0);
+    used.push({ n, entry, support: citationSupport(sentence, entry.text) });
   }
 
-  if (used.length > 0) {
-    // Keep the ORIGINAL numbers so the inline [n] markers in the reply point
-    // at the same entry the footer lists.
-    const links = used
-      .sort((a, b) => a.n - b.n)
-      .map(({ n, entry }) => `[${n}] ${citationLabel(entry)}`)
-      .join(" · ");
-    return (
-      `\n\n---\n📚 **المراجع المستنَد إليها**: ` + links
+  const backed = used.filter((u) => u.support >= SUPPORT_THRESHOLD);
+  const unverified = used.filter((u) => u.support < SUPPORT_THRESHOLD);
+  for (const u of unverified) {
+    console.error(
+      `[citation] «${u.entry.symbol}» [${u.n}] unsupported ` +
+        `(${u.support.toFixed(2)} overlap)`,
     );
   }
+
+  const parts: string[] = [];
+  if (backed.length > 0) {
+    // Keep the ORIGINAL numbers so the inline [n] markers in the reply point
+    // at the same entry the footer lists.
+    parts.push(
+      `📚 **المراجع المستنَد إليها**: ` +
+        backed
+          .sort((a, b) => a.n - b.n)
+          .map(({ n, entry }) => `[${n}] ${citationLabel(entry)}`)
+          .join(" · "),
+    );
+  }
+  if (unverified.length > 0) {
+    parts.push(
+      `⚠️ **استشهادات لم يطابقها نصّ المقتطف**: ` +
+        unverified
+          .sort((a, b) => a.n - b.n)
+          .map(({ n, entry }) => `[${n}] ${citationLabel(entry)}`)
+          .join(" · "),
+    );
+  }
+  if (parts.length > 0) return `\n\n---\n${parts.join("\n\n")}`;
 
   // The reply cited nothing. Say that plainly instead of dressing up the
   // retrieval results as sources the interpretation used.

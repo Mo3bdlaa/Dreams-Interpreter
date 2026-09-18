@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { retrieve, retrieveSources, buildCitedFooter, type KbEntry } from "./rag";
+import { retrieve, retrieveSources, buildCitedFooter, citationSupport, type KbEntry } from "./rag";
 
 /**
  * Retrieval quality evals.
@@ -113,19 +113,22 @@ describe("action-dream grounding", () => {
   }
 });
 
-describe("citation integrity", () => {  const refs = [
+describe("citation integrity", () => {
+  const refs = [
     {
       id: "a", symbol: "بحر", source: "تفسير الأحلام لابن سيرين",
       url: "https://www.thedreams.co/ibn-sirin/dictionary-of-letters/harf-albaa/#تفسير-بحر",
-      text: "t1",
+      text: "البحر في المنام ملك قوي هائل، وهو للتاجر متاعه، وفيه سعة ورزق واسع.",
     },
     {
       id: "b", symbol: "نور", source: "تعطير الأنام في تعبير المنام للنابلسي",
-      url: "https://shamela.ws/book/1217/348", text: "t2",
+      url: "https://shamela.ws/book/1217/348",
+      text: "النور في المنام هداية وغنى بعد فقر وعز بعد ذل وتوبة بعد عصيان.",
     },
     {
       id: "c", symbol: "خبز", source: "الإشارات في علم العبارات لابن شاهين",
-      url: "https://www.thedreams.co/ibn-shaheen/1442/", text: "t3",
+      url: "https://www.thedreams.co/ibn-shaheen/1442/",
+      text: "الخبز في المنام رزق حاضر وعيش هنيء، ومن أطعمه غيره ناله خير.",
     },
   ] as KbEntry[];
 
@@ -170,12 +173,49 @@ describe("citation integrity", () => {  const refs = [
       {
         id: "x", symbol: "نور", source: "قاموس تفسير الأحلام (منتخب)",
         url: "https://www.thedreams.co/ibn-sirin/dictionary-of-letters/",
-        text: "t",
+        text: "النور في المنام هداية وبشارة وفرج بعد ضيق.",
       },
     ] as KbEntry[];
-    const footer = buildCitedFooter("والنور هداية [1].", curated);
+    const footer = buildCitedFooter("والنور هداية وبشارة [1].", curated);
     expect(footer).toContain("نور — منتخب");
     // an index page is not the source of the claim, so it must not be a link
     expect(footer).not.toContain("](https://");
+  });
+
+  it("flags a citation the excerpt says nothing about", () => {
+    // The number is real and in range, but the claim is unrelated to the text
+    // it points at — the one fabrication numbering alone cannot catch.
+    const footer = buildCitedFooter(
+      "وسفرك القادم إلى بلاد بعيدة سيطول ويتأخر رجوعك [1].",
+      refs,
+    );
+    expect(footer).toContain("لم يطابقها نصّ المقتطف");
+    expect(footer).not.toContain("المراجع المستنَد إليها");
+  });
+
+  it("separates supported citations from unsupported ones", () => {
+    const footer = buildCitedFooter(
+      "الخبز رزق حاضر وعيش هنيء [3]. وأما مركبتك فستتعطل في الطريق [1].",
+      refs,
+    );
+    expect(footer).toContain("المراجع المستنَد إليها");
+    expect(footer).toContain("[3] [خبز");
+    expect(footer).toContain("لم يطابقها نصّ المقتطف");
+    expect(footer).toContain("[1] [بحر");
+  });
+});
+
+describe("citationSupport", () => {
+  const excerpt = "النور في المنام هداية وغنى بعد فقر وعز بعد ذل.";
+
+  it("scores a paraphrase of the excerpt above the unrelated claim", () => {
+    const echoed = citationSupport("والنور هداية وغنى بعد فقر", excerpt);
+    const unrelated = citationSupport("وسوف تسافر إلى بلاد بعيدة", excerpt);
+    expect(echoed).toBeGreaterThan(unrelated);
+    expect(unrelated).toBe(0);
+  });
+
+  it("is zero for an empty claim", () => {
+    expect(citationSupport("", excerpt)).toBe(0);
   });
 });

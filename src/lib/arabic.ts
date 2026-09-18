@@ -2,7 +2,8 @@
 // the RAG retriever. Pure functions (no server-only deps) so they can run
 // anywhere.
 
-/** Normalize Arabic: strip diacritics + unify alef/ya/ta-marbuta + drop punctuation. */
+/** Normalize Arabic: strip diacritics + unify alef/ya/ta-marbuta + drop
+ *  everything that is not an Arabic letter. */
 export function normalizeArabic(text: string): string {
   return text
     .replace(/[ً-ْٰ]/g, "") // tashkeel
@@ -11,7 +12,12 @@ export function normalizeArabic(text: string): string {
     .replace(/ة/g, "ه") // ta marbuta -> ha
     .replace(/ؤ/g, "و")
     .replace(/ئ/g, "ي")
-    .replace(/[^؀-ۿ\s]/g, " ")
+    .replace(/ـ/g, "") // tatweel (kashida) is decoration, not a letter
+    // Keep Arabic LETTERS only. The previous class kept the whole Arabic block,
+    // which left ، ؛ ؟ and Arabic-Indic digits glued to the word next to them —
+    // so "خايف،" never matched "خوف" and a dream with ordinary punctuation
+    // silently lost most of its grounding.
+    .replace(/[^ء-ي\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }

@@ -239,10 +239,7 @@ export function buildCitedFooter(reply: string, refs: KbEntry[]): string {
     // at the same entry the footer lists.
     const links = used
       .sort((a, b) => a.n - b.n)
-      .map(
-        ({ n, entry }) =>
-          `[${n}] [${entry.symbol} — ${shortSource(entry.source)}](${entry.url})`,
-      )
+      .map(({ n, entry }) => `[${n}] ${citationLabel(entry)}`)
       .join(" · ");
     return (
       `\n\n---\n📚 **المراجع المستنَد إليها**: ` + links
@@ -251,14 +248,26 @@ export function buildCitedFooter(reply: string, refs: KbEntry[]): string {
 
   // The reply cited nothing. Say that plainly instead of dressing up the
   // retrieval results as sources the interpretation used.
-  const links = refs
-    .slice(0, 6)
-    .map((e) => `[${e.symbol} — ${shortSource(e.source)}](${e.url})`)
-    .join(" · ");
+  const links = refs.slice(0, 6).map(citationLabel).join(" · ");
   return (
     `\n\n---\n🔎 **رموز ذات صلة في المعجم** (لم يستند إليها التفسير صراحةً): ` +
     links
   );
+}
+
+/**
+ * Render one citation. A handful of curated entries have no page of their own,
+ * only the dictionary index — linking those would dress up a table of contents
+ * as the source of the claim, so they are shown unlinked instead.
+ */
+function citationLabel(entry: KbEntry): string {
+  const text = `${entry.symbol} — ${shortSource(entry.source)}`;
+  return hasOwnPage(entry.url) ? `[${text}](${entry.url})` : text;
+}
+
+/** True when the URL points at a specific symbol, not a dictionary index. */
+export function hasOwnPage(url: string): boolean {
+  return url.includes("#") || /\/\d+\/?$/.test(url);
 }
 
 export const KB_SIZE = ENTRIES.length;

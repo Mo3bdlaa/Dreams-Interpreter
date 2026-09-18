@@ -116,15 +116,16 @@ describe("action-dream grounding", () => {
 describe("citation integrity", () => {  const refs = [
     {
       id: "a", symbol: "بحر", source: "تفسير الأحلام لابن سيرين",
-      url: "https://x/b", text: "t1",
+      url: "https://www.thedreams.co/ibn-sirin/dictionary-of-letters/harf-albaa/#تفسير-بحر",
+      text: "t1",
     },
     {
       id: "b", symbol: "نور", source: "تعطير الأنام في تعبير المنام للنابلسي",
-      url: "https://x/n", text: "t2",
+      url: "https://shamela.ws/book/1217/348", text: "t2",
     },
     {
       id: "c", symbol: "خبز", source: "الإشارات في علم العبارات لابن شاهين",
-      url: "https://x/k", text: "t3",
+      url: "https://www.thedreams.co/ibn-shaheen/1442/", text: "t3",
     },
   ] as KbEntry[];
 
@@ -162,5 +163,19 @@ describe("citation integrity", () => {  const refs = [
 
   it("emits nothing when there was no grounding at all", () => {
     expect(buildCitedFooter("أي نص [1]", [])).toBe("");
+  });
+
+  it("does not link entries whose only URL is a dictionary index", () => {
+    const curated = [
+      {
+        id: "x", symbol: "نور", source: "قاموس تفسير الأحلام (منتخب)",
+        url: "https://www.thedreams.co/ibn-sirin/dictionary-of-letters/",
+        text: "t",
+      },
+    ] as KbEntry[];
+    const footer = buildCitedFooter("والنور هداية [1].", curated);
+    expect(footer).toContain("نور — منتخب");
+    // an index page is not the source of the claim, so it must not be a link
+    expect(footer).not.toContain("](https://");
   });
 });

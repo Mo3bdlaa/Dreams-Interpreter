@@ -6,13 +6,15 @@ import {
   shortSource,
   buildCitedFooter,
   retrieve,
+  retrieveSources,
   entryById,
   formatReferences,
   type KbEntry,
 } from "./rag";
 import { embedQuery, isEmbeddingConfigured } from "./embed";
 import { isSemanticReady, semanticRank } from "./semantic";
-import { dialectHints } from "./dialect";
+import { dialectHints, normalizeDialectText } from "./dialect";
+import { normalizeArabic, stripArticle } from "./arabic";
 
 /**
  * Build the grounding reference block for a dream, and return the exact
@@ -310,8 +312,24 @@ export function extractMetadata(text: string): {
   mood: "positive" | "neutral" | "negative" | "mixed";
   symbols: string[];
 } {
-  const matched = matchSymbols(text);
-  const symbols = matched.map((m) => m.key);
+  // Mood still comes from the curated dictionary — it is the only source that
+  // carries sentiment. Feed it dialect-normalized text so "وقعت"/"بعيط" count.
+  const matched = matchSymbols(normalizeDialectText(text));
+
+  // Tags, though, come from the full corpus: the curated set is 33 symbols
+  // against 5600+ entries, so on its own it left most dreams untagged on the
+  // dashboard and calendar.
+  const seen = new Set<string>();
+  const symbols: string[] = [];
+  const push = (raw: string) => {
+    // "أسنان" and "الأسنان" are the same chip.
+    const key = stripArticle(normalizeArabic(raw));
+    if (!key || seen.has(key) || symbols.length >= 8) return;
+    seen.add(key);
+    symbols.push(raw);
+  };
+  for (const m of matched) push(m.key);
+  for (const s of retrieveSources(text)) push(s.symbol);
 
   if (matched.length === 0) {
     return { mood: "neutral", symbols };

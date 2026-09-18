@@ -71,8 +71,49 @@ describe("retrieval grounding precision", () => {
   }
 });
 
-describe("citation integrity", () => {
-  const refs = [
+/**
+ * Coverage: dreams are narrated as ACTIONS ("حلمت إني وقعت"، "اتجوزت") while the
+ * dictionaries are indexed by NOUNS. Without the verb layer these return no
+ * grounding at all — or match a wrong root once the Egyptian present-tense "بـ"
+ * is stripped ("بسوق عربية" → سوق + عرب, a market and the Arabs, for a dream
+ * about driving a car).
+ */
+describe("action-dream grounding", () => {
+  const CASES: { dream: string; expect: string; forbid?: string[] }[] = [
+    { dream: "حلمت إني وقعت من مكان عالي", expect: "سقوط" },
+    { dream: "حلمت إني اتجوزت واحدة معرفهاش", expect: "زواج" },
+    { dream: "حلمت إني مشيت حافي في الشارع", expect: "حفاء" },
+    { dream: "حلمت إني بعيط بصوت عالي ومحدش سامعني", expect: "بكاء" },
+    { dream: "حلمت إني بطير في السما وفوق البيوت", expect: "طيران" },
+    {
+      dream: "حلمت إني بجري وبحاول أهرب من حاجة بتطاردني",
+      expect: "خوف",
+      forbid: ["حاجه"],
+    },
+    {
+      dream: "حلمت إني بسوق عربية وفرملتها مش شغالة",
+      expect: "ركوب",
+      forbid: ["سوق", "عرب"],
+    },
+    {
+      dream: "حلمت إني بحلق شعري وقصيته كله",
+      expect: "شعر",
+      forbid: ["كلة"], // "كله" must not match the symbol "كلة"
+    },
+  ];
+
+  for (const c of CASES) {
+    it(`grounds «${c.expect}»: ${c.dream.slice(12, 40)}`, () => {
+      const grounded = retrieve(c.dream, 24)
+        .filter((h) => h.symbolMatch)
+        .map((h) => h.symbol);
+      expect(grounded).toContain(c.expect);
+      for (const bad of c.forbid ?? []) expect(grounded).not.toContain(bad);
+    });
+  }
+});
+
+describe("citation integrity", () => {  const refs = [
     {
       id: "a", symbol: "بحر", source: "تفسير الأحلام لابن سيرين",
       url: "https://x/b", text: "t1",

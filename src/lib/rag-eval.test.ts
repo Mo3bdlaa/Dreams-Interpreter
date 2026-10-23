@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { retrieve, retrieveSources, buildCitedFooter, citationSupport, type KbEntry } from "./rag";
+import { retrieve, retrieveSources, buildCitedFooter, citationSupport, highlightClauses, type KbEntry } from "./rag";
 
 /**
  * Retrieval quality evals.
@@ -217,5 +217,31 @@ describe("citationSupport", () => {
 
   it("is zero for an empty claim", () => {
     expect(citationSupport("", excerpt)).toBe(0);
+  });
+});
+
+describe("highlightClauses", () => {
+  // Ibn Shaheen's entry, abridged: several conditional rulings in one paragraph.
+  const entry =
+    "ومن رأى أنه تغوط فإنه يخرج منه مال، وإن كان في طريق خرج في التلف والذهاب، " +
+    "وإن تغوط تحته ولا يشعر به من حوله نقص ماله ولم يفطن به شريكه ولا أهله، " +
+    "وقيل الحدث الجامد إذا خرج من الإنسان يذهب من المال بقدره.";
+  const dream =
+    "كنت جالساً فتغوطت في ثيابي ولم يرَ الناس شيئاً ولم يشعروا به، وحاولت أن أمسك نفسي فلم أستطع";
+
+  it("marks the clause whose condition the dream describes", () => {
+    const out = highlightClauses(entry, "غائط", dream);
+    expect(out).toContain("◄وإن تغوط تحته ولا يشعر به من حوله");
+    expect(out).not.toContain("◄وإن كان في طريق");
+  });
+
+  it("does not score clauses on the symbol's own name", () => {
+    // Every clause says تغوط; that alone must not mark anything.
+    const out = highlightClauses(entry, "غائط", "حلمت إني تغوطت");
+    expect(out).not.toContain("◄");
+  });
+
+  it("leaves the text unchanged when nothing overlaps", () => {
+    expect(highlightClauses(entry, "غائط", "حلمت بالبحر")).toBe(entry);
   });
 });

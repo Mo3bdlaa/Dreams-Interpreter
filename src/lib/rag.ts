@@ -200,11 +200,51 @@ export function entryById(id: string): KbEntry | undefined {
 /** Format a set of reference entries into a NUMBERED grounding block, so the
  *  interpreter can cite them by index and we can verify what it actually
  *  leaned on. Each excerpt carries its book so attribution stays exact. */
-export function formatReferences(entries: KbEntry[]): string {
+// Clause boundaries inside a dictionary entry. The books pack many conditional
+// rulings into one paragraph ("ومن رأى… وإن كان في ثوب… وقيل…"), and each holds
+// only under its own condition.
+const CLAUSE_SPLIT =
+  /(?<=[.؛:!؟])\s+|\s(?=[وف](?:من|إن|ان|إذا|اذا|قيل|ربما)\s)/;
+
+/**
+ * Mark the clauses of an entry whose wording overlaps the dream's own details
+ * with ◄…►. Entries are long and conditional; left unmarked, the model tended
+ * to grab whichever clause sounded nicest — e.g. "takes coins" from a ruling
+ * that requires picking the excrement up — and skip the one clause that
+ * actually described the dream. The symbol's own name is ignored when scoring,
+ * since every clause of its entry mentions it.
+ */
+export function highlightClauses(text: string, symbol: string, dream: string): string {
+  const symbolTokens = contentTokens(symbol);
+  const dreamTokens = contentTokens(`${dream} ${normalizeDialectText(dream)}`).filter(
+    (d) => !symbolTokens.some((s) => tokenMatches(d, s) || tokenMatches(s, d)),
+  );
+  if (!dreamTokens.length) return text;
+
+  const clauses = text.split(CLAUSE_SPLIT);
+  if (clauses.length < 2) return text;
+  const scores = clauses.map((c) => {
+    const ct = contentTokens(c);
+    return dreamTokens.filter((d) =>
+      ct.some((t) => tokenMatches(t, d) || tokenMatches(d, t)),
+    ).length;
+  });
+  // Keep the marks rare enough to mean something: the two best clauses at most.
+  const best = [...scores].sort((a, b) => b - a);
+  const cutoff = Math.max(1, best[1] ?? 0);
+  return clauses
+    .map((c, i) => (scores[i] >= cutoff && scores[i] >= best[0] - 1 && scores[i] > 0 ? `◄${c}►` : c))
+    .join(" ");
+}
+
+export function formatReferences(entries: KbEntry[], dream = ""): string {
   if (entries.length === 0) return "";
   const lines = entries
     .map(
-      (h, i) => `[${i + 1}] «${h.symbol}» — ${shortSource(h.source)}: ${h.text}`,
+      (h, i) =>
+        `[${i + 1}] «${h.symbol}» — ${shortSource(h.source)}: ${
+          dream ? highlightClauses(h.text, h.symbol, dream) : h.text
+        }`,
     )
     .join("\n");
   return (
@@ -212,10 +252,12 @@ export function formatReferences(entries: KbEntry[]): string {
     "«تعطير الأنام»، وابن شاهين في «الإشارات»)، قد تكون ذات صلة برموز هذا الحلم. " +
     "هي أدلّة تستنبط منها لا نصوصٌ تنقلها: استرشد بما يطابق المعنى الذي قصده الرائي، " +
     "وتجاهل أي مقتطف يتشابه لفظاً ويختلف معنى، ثم انسج تفسيراً واحداً مترابطاً.\n" +
-    "إن اختلف كتابان في رمزٍ واحد فاذكر الوجهين باختصار ونسب كلَّ قولٍ لصاحبه.\n" +
+    "أحكام المعاجم مشروطة («من رأى أنه كذا… فإنه كذا»): لا تأخذ جملةً إلا إذا تحقّق شرطها في الحلم. " +
+    "الجمل المحاطة بـ ◄…► هي التي يشترك لفظها مع تفاصيل الحلم، فابدأ بفحصها — ثم تحقّق أن شرطها متحقّق فعلاً.\n" +
+    "إن اختلف كتابان في رمزٍ واحد، أو دلّ المقتطف على وجهٍ محمود ووجهٍ مكروه، فاذكر الوجهين باختصار ونسب كلَّ قولٍ لصاحبه.\n" +
     "إلزامي: كلّما بنيتَ جملةً على مقتطف، اكتب رقمه بين قوسين مربعين في آخر الجملة. " +
     "مثال: «والنورُ هدايةٌ وغِنىً بعد فقر، فنزولُه عليك بشارةُ فرجٍ بعد ضيق [2].» " +
-    "لا تذكر رقماً لم تستند إليه، ولا رقماً غير موجود في القائمة أدناه.\n" +
+    "لا تذكر رقماً لم تستند إليه، ولا رقماً غير موجود في القائمة أدناه. ولا تنقل علامتي ◄► في ردّك.\n" +
     lines
   );
 }

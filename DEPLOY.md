@@ -45,7 +45,7 @@ openssl rand -base64 48      # => AUTH_SECRET
 | `AUTH_SECRET` | السرّ المُولّد (الخطوة 2) |
 | `AI_API_KEY` | مفتاح المزوّد (OpenRouter/OpenAI…) |
 | `AI_BASE_URL` | `https://openrouter.ai/api/v1` |
-| `AI_MODEL` | `deepseek/deepseek-v4-flash-0731:free,inclusionai/ling-3.0-flash-vl:free,nvidia/nemotron-3-ultra-550b-a55b:free` (سلسلة بديلة تلقائية عند الـ 429) |
+| `AI_MODEL` | اختياري — اتركه فارغاً. لو ضبطته يُجرَّب أولاً ثم تُضاف السلسلة الافتراضية بعده تلقائياً، فلا يوقف موديلٌ أُلغي الموقعَ |
 | `AI_MAX_TOKENS` | `1500` |
 | `AI_DISABLE_REASONING` | `true` (لموديلات reasoning المجانية) |
 | `AI_EMBED_MODEL` | *(لا تضعه)* الاسترجاع الدلالي **مفعّل تلقائياً** مع OpenRouter. ضع `off` لتعطيله |

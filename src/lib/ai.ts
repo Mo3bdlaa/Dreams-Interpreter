@@ -36,7 +36,9 @@ async function buildGrounding(
   k = 8,
 ): Promise<{ block: string; refs: KbEntry[] }> {
   // Newest turn first: its symbols matter most to the reply being written.
-  const ordered = turns.filter((t) => t.trim()).reverse();
+  const ordered = await Promise.all(
+    turns.filter((t) => t.trim()).reverse().map(toArabicForRetrieval),
+  );
   const combined = ordered.join("\n");
 
   const picked: KbEntry[] = [];
@@ -164,17 +166,23 @@ export function isAIConfigured(): boolean {
 
 // One or more models (comma-separated in AI_MODEL), tried in order. Free
 // OpenRouter models get rate-limited (429) often, so we fall back to the next
-// one on failure instead of dropping the reply. Chain picked by benchmarking
-// the live free catalogue on Arabic dream interpretation: pure Arabic (no
-// language leakage), correct colloquial reading, and valid [n] citations.
-const MODELS = (): string[] =>
-  (
-    process.env.AI_MODEL ||
-    "deepseek/deepseek-v4-flash-0731:free,inclusionai/ling-3.0-flash-vl:free,nvidia/nemotron-3-ultra-550b-a55b:free,google/gemma-4-31b-it:free"
-  )
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+// one on failure instead of dropping the reply. The defaults are ALWAYS
+// appended after AI_MODEL: OpenRouter retires free models without notice, and a
+// stale AI_MODEL pointing only at a retired model used to fail every request.
+const DEFAULT_MODELS = [
+  "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "nvidia/nemotron-3.5-lightning:free",
+  "google/gemma-4-31b-it:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "google/gemma-4-26b-a4b-it:free",
+];
+const MODELS = (): string[] => [
+  ...new Set(
+    [...(process.env.AI_MODEL || "").split(","), ...DEFAULT_MODELS]
+      .map((s) => s.trim())
+      .filter(Boolean),
+  ),
+];
 const MAX_TOKENS = () => Number(process.env.AI_MAX_TOKENS) || 1500;
 // Some free OpenRouter models are "reasoning" models that spend the whole
 // token budget thinking and return empty content. Set AI_DISABLE_REASONING=true
@@ -192,13 +200,14 @@ async function chatComplete(
   client: OpenAI,
   messages: ChatTurn[],
   temperature: number,
+  maxTokens = MAX_TOKENS(),
 ): Promise<string> {
   let lastErr: unknown;
   for (const model of MODELS()) {
     const body: Record<string, unknown> = {
       model,
       temperature,
-      max_tokens: MAX_TOKENS(),
+      max_tokens: maxTokens,
       messages,
     };
     if (DISABLE_REASONING()) body.reasoning = { enabled: false };
@@ -216,8 +225,59 @@ async function chatComplete(
       console.error(`[ai] model ${model} failed:`, (e as Error)?.message || e);
     }
   }
-  if (lastErr) console.error("[ai] all models failed");
+  if (lastErr) {
+    console.error("[ai] all models failed");
+    lastFailure = lastErr;
+  }
   return "";
+}
+
+// Why the last call produced nothing, so the reply can say something truer
+// than "rephrase your dream" — which sent users rewriting perfectly good
+// dreams while the real cause was a revoked key or a retired model.
+let lastFailure: unknown = null;
+
+export function failureReply(e: unknown): string {
+  const status = (e as { status?: number })?.status;
+  if (status === 401 || status === 403)
+    return "تعذّر الاتصال بخدمة التفسير (مفتاح الخدمة غير صالح). يرجى إبلاغ مسؤول الموقع.";
+  if (status === 404 || status === 400)
+    return "تعذّر الوصول إلى نموذج التفسير (قد يكون أُوقف). يرجى إبلاغ مسؤول الموقع.";
+  if (status === 429 || (status && status >= 500))
+    return "خدمة التفسير مزدحمة الآن. انتظر دقيقة ثم أعد الإرسال وسيُفسَّر حلمك بإذن الله.";
+  return "لم أتمكن من تكوين تفسير الآن، يُرجى إعادة الإرسال بعد قليل.";
+}
+
+/**
+ * The corpus and every matcher are Arabic. A dream told in English (or mostly
+ * English) used to get zero grounding — and the model then interpreted it from
+ * nothing. Translate such turns to Arabic for retrieval only; the conversation
+ * the model sees is unchanged.
+ */
+function arabicRatio(text: string): number {
+  const letters = text.match(/\p{L}/gu)?.length ?? 0;
+  const arabic = text.match(/[\u0621-\u064A]/g)?.length ?? 0;
+  return letters ? arabic / letters : 1;
+}
+
+async function toArabicForRetrieval(turn: string): Promise<string> {
+  if (arabicRatio(turn) >= 0.5) return turn;
+  const client = getClient();
+  if (!client) return turn;
+  const out = await chatComplete(
+    client,
+    [
+      {
+        role: "system",
+        content:
+          "ترجم وصف الحلم التالي إلى العربية الفصحى ترجمةً أمينة بلا شرح ولا تفسير. استعمل أسماء الرموز كما في كتب التعبير (مثل: غائط، بول، ثعبان، بحر). أخرج الترجمة فقط.",
+      },
+      { role: "user", content: turn },
+    ],
+    0,
+    400,
+  );
+  return out ? `${turn}\n${out}` : turn;
 }
 
 /**
@@ -249,9 +309,7 @@ export async function interpretDream(
     GROUNDED_TEMPERATURE,
   );
 
-  if (!reply) {
-    return "لم أتمكن من تكوين تفسير الآن، حاول إعادة صياغة الحلم بتفاصيل أكثر.";
-  }
+  if (!reply) return failureReply(lastFailure);
   // Cite only the excerpts the reply actually leaned on.
   return reply + buildCitedFooter(reply, grounding.refs);
 }
@@ -287,6 +345,7 @@ export async function* streamDreamReply(
   // text (e.g. a 429 rate-limit), fall back to the next; once tokens start
   // flowing we commit to that model.
   let any = false;
+  let streamErr: unknown = null;
   for (const model of MODELS()) {
     const body: Record<string, unknown> = {
       model,
@@ -315,12 +374,11 @@ export async function* streamDreamReply(
       if (any) return grounding.refs; // completed successfully on this model
     } catch (e) {
       console.error(`[ai] stream model ${model} failed:`, (e as Error)?.message || e);
+      streamErr = e;
       if (any) return grounding.refs; // partial output already sent; don't restart
     }
   }
-  if (!any) {
-    yield "لم أتمكن من تكوين تفسير الآن، حاول إعادة صياغة الحلم بتفاصيل أكثر.";
-  }
+  if (!any) yield failureReply(streamErr);
   return grounding.refs;
 }
 

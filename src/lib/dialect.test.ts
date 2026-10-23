@@ -14,6 +14,16 @@ describe("dialect normalization", () => {
     expect(mapDialectToken("ميه")).toBe("ماء");
   });
 
+  it("reads Egyptian «فرح» as a wedding, not as joy", () => {
+    expect(mapDialectToken("فرح")).toBe("عرس");
+    expect(mapDialectToken("فرحان")).toBe("فرحان");
+    const grounded = retrieve("حلمت إني كنت في فرح وناس كتير بتبص عليا", 24)
+      .filter((h) => h.symbolMatch)
+      .map((h) => h.symbol);
+    expect(grounded.some((s) => s.includes("عرس"))).toBe(true);
+    expect(grounded).not.toContain("فرح");
+  });
+
   it("leaves فصحى / unknown words untouched", () => {
     expect(mapDialectToken("بحر")).toBe("بحر");
     expect(mapDialectToken("شبه")).toBe("شبه");

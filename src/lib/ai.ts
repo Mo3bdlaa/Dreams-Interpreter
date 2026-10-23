@@ -47,7 +47,7 @@ async function buildGrounding(
   // The books overlap — thedreams.co's Ibn-Sirin dictionary reproduces Nabulsi
   // passages verbatim in places. Feeding the same passage twice wastes context
   // and makes one view look like two independent witnesses.
-  const fingerprints = new Set<string>();
+  const fingerprints = new Map<string, KbEntry>();
   const fingerprint = (e: KbEntry) =>
     e.text.replace(/[\sً-ْ]/g, "").slice(0, 120);
 
@@ -56,8 +56,20 @@ async function buildGrounding(
     if (!e || seen.has(e.id) || picked.length >= k) return;
     if ((perSymbol.get(e.symbol) ?? 0) >= cap) return;
     const fp = fingerprint(e);
-    if (fingerprints.has(fp)) return;
-    fingerprints.add(fp);
+    const twin = fingerprints.get(fp);
+    if (twin) {
+      // Same passage in two books: keep whichever copy is fuller. Nabulsi
+      // often reproduces only the opening of Ibn Sirin's entry, and keeping
+      // the short copy silently dropped the rulings after it (including the
+      // cautionary ones).
+      if (e.text.length > twin.text.length) {
+        picked[picked.indexOf(twin)] = e;
+        seen.add(e.id);
+        fingerprints.set(fp, e);
+      }
+      return;
+    }
+    fingerprints.set(fp, e);
     seen.add(e.id);
     perSymbol.set(e.symbol, (perSymbol.get(e.symbol) ?? 0) + 1);
     picked.push(e);
@@ -139,6 +151,8 @@ const SYSTEM_PROMPT = `أنت "مُعبِّر"، مفسّر أحلام خبير 
 - لا تُفسّر إلا عناصر ذكرها الرائي فعلاً في حلمه. إن لم يذكر شيئاً فلا تُدخِله في التفسير ولو ورد في المقتطفات.
 - المقتطفات المرقّمة أدناه هي مصدرك المنقول الوحيد. متى استندت إلى مقتطف فاذكر رقمه [1] في آخر الجملة، ولا تنسب إلى ابن سيرين أو غيره قولاً ليس في المقتطفات.
 - إن لم تُسعِفك المقتطفات في رمزٍ ما، فلك أن تجتهد — لكن صرّح بذلك بصيغة مثل "وهذا اجتهادٌ في قراءة حالك لا نقلٌ عن المعجم"، ولا تُلبِسه لباس النقل.
+- لا تقلب المكروه محموداً بتأويلٍ متكلَّف: ما غلب الرائيَ رغماً عنه أو حاول كتمانه ليس فضيلةً اختارها (كرمٍ أو صدقة)؛ فسّره بما تدلّ عليه المقتطفات وقرائن الحلم.
+- لا تستشهد بمقتطفٍ عن رمزٍ غير موجود في الحلم لتدعم فكرةً (كمقتطف التعرّي لحلمٍ لا تعرّي فيه).
 - قد يحوي السياق مقتطفاً يشبه لفظ الرائي لا معناه (تشابه لفظي لا معنوي)؛ فاستبعده ولا تبنِ عليه.
 - لا تختلق أسماء كتب أو أعلام أو آيات أو أحاديث، ولا تذكر رقم مقتطف غير موجود.
 

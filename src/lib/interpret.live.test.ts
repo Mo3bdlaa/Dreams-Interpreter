@@ -6,6 +6,7 @@ import { interpretDream } from "./ai";
  * unless LIVE_EVAL=1 (and AI_API_KEY etc. are set):
  *
  *   LIVE_EVAL=1 AI_API_KEY=… AI_BASE_URL=https://openrouter.ai/api/v1 npx vitest run interpret.live
+ *   LIVE_EVAL=1 ANTHROPIC_API_KEY=… ANTHROPIC_MODEL=claude-haiku-5-5 npx vitest run interpret.live
  *
  * Retrieval evals prove the right excerpts reach the model; this proves the
  * model then reads the dreamer's state, applies only rulings whose conditions

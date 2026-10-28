@@ -58,7 +58,8 @@ npm run dev                 # http://localhost:3000
 | `DATABASE_URL` | `file:local.db` محلياً، أو `libsql://...turso.io` للإنتاج |
 | `DATABASE_AUTH_TOKEN` | توكن Turso (للإنتاج فقط) |
 | `AUTH_SECRET` | سرّ طويل عشوائي لتوقيع الجلسات (`openssl rand -base64 48`) |
-| `AI_API_KEY` | مفتاح المزود (اختياري — بدونه يعمل fallback) |
+| `ANTHROPIC_API_KEY` | مفتاح Anthropic — Claude يُجرَّب أولاً (`ANTHROPIC_MODEL`، الافتراضي `claude-haiku-5-5`) |
+| `AI_API_KEY` | مفتاح المزود المتوافق مع OpenAI: احتياطي + embeddings (اختياري — بدون أي مفتاح يعمل fallback) |
 | `AI_BASE_URL` | عنوان المزود المتوافق مع OpenAI |
 | `AI_MODEL` | اسم الموديل |
 

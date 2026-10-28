@@ -16,6 +16,15 @@ import { isSemanticReady, semanticRank } from "./semantic";
 import { dialectHints, normalizeDialectText } from "./dialect";
 import { normalizeArabic, stripArticle } from "./arabic";
 import { symbolVerdicts, penalty } from "./feedback-signal";
+import {
+  isAnthropicConfigured,
+  ANTHROPIC_MODELS,
+  INTERPRET_EFFORT,
+  anthropicComplete,
+  anthropicStream,
+  type ChatTurn,
+  type Effort,
+} from "./anthropic";
 
 /**
  * Build the grounding reference block for a dream, and return the exact
@@ -177,7 +186,7 @@ function getClient(): OpenAI | null {
 }
 
 export function isAIConfigured(): boolean {
-  return Boolean(process.env.AI_API_KEY);
+  return Boolean(process.env.AI_API_KEY) || isAnthropicConfigured();
 }
 
 // One or more models (comma-separated in AI_MODEL), tried in order. Free
@@ -205,21 +214,34 @@ const MAX_TOKENS = () => Number(process.env.AI_MAX_TOKENS) || 1500;
 // to turn that off (OpenRouter-specific param, ignored elsewhere).
 const DISABLE_REASONING = () => process.env.AI_DISABLE_REASONING === "true";
 
-type ChatTurn = { role: "system" | "user" | "assistant"; content: string };
 
 /**
- * Provider-agnostic chat call. Applies max_tokens and (optionally) disables
+ * Provider-agnostic chat call. Claude models first (when ANTHROPIC_API_KEY is
+ * set), then the OpenAI-compatible chain; the first non-empty reply wins.
+ * On the OpenAI-compatible path it applies max_tokens, optionally disables
  * reasoning, and falls back to the model's reasoning text if it returned no
  * content — so reasoning models never yield an empty reply.
  */
 async function chatComplete(
-  client: OpenAI,
   messages: ChatTurn[],
   temperature: number,
   maxTokens = MAX_TOKENS(),
+  effort: Effort = "low",
 ): Promise<string> {
   let lastErr: unknown;
-  for (const model of MODELS()) {
+  if (isAnthropicConfigured()) {
+    for (const model of ANTHROPIC_MODELS()) {
+      try {
+        const text = await anthropicComplete(model, messages, maxTokens, effort);
+        if (text) return text;
+      } catch (e) {
+        lastErr = e;
+        console.error(`[ai] model ${model} failed:`, (e as Error)?.message || e);
+      }
+    }
+  }
+  const client = getClient();
+  for (const model of client ? MODELS() : []) {
     const body: Record<string, unknown> = {
       model,
       temperature,
@@ -229,8 +251,8 @@ async function chatComplete(
     if (DISABLE_REASONING()) body.reasoning = { enabled: false };
     try {
       // Cast: `reasoning` is an OpenRouter extension not in the OpenAI types.
-      const completion = await client.chat.completions.create(
-        body as unknown as Parameters<typeof client.chat.completions.create>[0],
+      const completion = await client!.chat.completions.create(
+        body as unknown as Parameters<OpenAI["chat"]["completions"]["create"]>[0],
       );
       const msg = (completion as { choices: { message: { content?: string | null; reasoning?: string | null } }[] })
         .choices[0]?.message;
@@ -278,10 +300,8 @@ function arabicRatio(text: string): number {
 
 async function toArabicForRetrieval(turn: string): Promise<string> {
   if (arabicRatio(turn) >= 0.5) return turn;
-  const client = getClient();
-  if (!client) return turn;
+  if (!isAIConfigured()) return turn;
   const out = await chatComplete(
-    client,
     [
       {
         role: "system",
@@ -296,6 +316,14 @@ async function toArabicForRetrieval(turn: string): Promise<string> {
   return out ? `${turn}\n${out}` : turn;
 }
 
+/** Fixed instructions first (cacheable), then this dream's grounding. */
+function systemTurns(groundingBlock: string): ChatTurn[] {
+  return [
+    { role: "system", content: SYSTEM_PROMPT },
+    ...(groundingBlock ? [{ role: "system" as const, content: groundingBlock }] : []),
+  ];
+}
+
 /**
  * Produce an interpretation reply for a dream conversation. The latest
  * user turn is grounded with matching classical-reference symbols.
@@ -307,22 +335,18 @@ export async function interpretDream(
   // Retrieve grounding references from the Ibn-Sirin corpus (RAG).
   const grounding = await buildGrounding(userTurns(history));
 
-  const client = getClient();
-  if (!client) {
+  if (!isAIConfigured()) {
     return fallbackInterpretation(lastUser?.content || "");
   }
 
-  const systemContent = grounding.block
-    ? `${SYSTEM_PROMPT}\n\n${grounding.block}`
-    : SYSTEM_PROMPT;
-
   const reply = await chatComplete(
-    client,
     [
-      { role: "system", content: systemContent },
+      ...systemTurns(grounding.block),
       ...history.map((m) => ({ role: m.role, content: m.content })),
     ],
     GROUNDED_TEMPERATURE,
+    MAX_TOKENS(),
+    INTERPRET_EFFORT(),
   );
 
   if (!reply) return failureReply(lastFailure);
@@ -341,19 +365,14 @@ export async function* streamDreamReply(
 ): AsyncGenerator<string, KbEntry[]> {
   const lastUser = [...history].reverse().find((m) => m.role === "user");
   const grounding = await buildGrounding(userTurns(history));
-  const client = getClient();
 
-  if (!client) {
+  if (!isAIConfigured()) {
     yield fallbackInterpretation(lastUser?.content || "");
     return [];
   }
 
-  const systemContent = grounding.block
-    ? `${SYSTEM_PROMPT}\n\n${grounding.block}`
-    : SYSTEM_PROMPT;
-
-  const messages = [
-    { role: "system", content: systemContent },
+  const messages: ChatTurn[] = [
+    ...systemTurns(grounding.block),
     ...history.map((m) => ({ role: m.role, content: m.content })),
   ];
 
@@ -362,7 +381,25 @@ export async function* streamDreamReply(
   // flowing we commit to that model.
   let any = false;
   let streamErr: unknown = null;
-  for (const model of MODELS()) {
+  if (isAnthropicConfigured()) {
+    for (const model of ANTHROPIC_MODELS()) {
+      try {
+        for await (const piece of anthropicStream(model, messages, MAX_TOKENS(), INTERPRET_EFFORT())) {
+          if (piece) {
+            any = true;
+            yield piece;
+          }
+        }
+        if (any) return grounding.refs;
+      } catch (e) {
+        console.error(`[ai] stream model ${model} failed:`, (e as Error)?.message || e);
+        streamErr = e;
+        if (any) return grounding.refs; // partial output already sent; don't restart
+      }
+    }
+  }
+  const client = getClient();
+  for (const model of client ? MODELS() : []) {
     const body: Record<string, unknown> = {
       model,
       temperature: GROUNDED_TEMPERATURE,
@@ -373,8 +410,8 @@ export async function* streamDreamReply(
     if (DISABLE_REASONING()) body.reasoning = { enabled: false };
 
     try {
-      const stream = (await client.chat.completions.create(
-        body as unknown as Parameters<typeof client.chat.completions.create>[0],
+      const stream = (await client!.chat.completions.create(
+        body as unknown as Parameters<OpenAI["chat"]["completions"]["create"]>[0],
       )) as unknown as AsyncIterable<{
         choices: { delta?: { content?: string | null; reasoning?: string | null } }[];
       }>;
@@ -486,8 +523,7 @@ export async function summarizeDream(
       .split("\n---\n")[0]
       .trim()}`;
 
-  const client = getClient();
-  if (!client) {
+  if (!isAIConfigured()) {
     return { summary: offline(), kind: null };
   }
 
@@ -496,7 +532,6 @@ export async function summarizeDream(
     .join("\n");
 
   const reply = await chatComplete(
-    client,
     [
       {
         role: "system",
@@ -541,7 +576,6 @@ export async function generateOverallSummary(
     return "لا توجد أحلام مسجّلة بعد. ابدأ بتسجيل أول حلم لتظهر هنا نظرة عامة على رحلتك مع الأحلام.";
   }
 
-  const client = getClient();
   const digest = dreams
     .map(
       (d, i) =>
@@ -551,12 +585,11 @@ export async function generateOverallSummary(
     )
     .join("\n");
 
-  if (!client) {
+  if (!isAIConfigured()) {
     return fallbackSummary(dreams);
   }
 
   const summary = await chatComplete(
-    client,
     [
       {
         role: "system",

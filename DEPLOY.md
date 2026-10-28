@@ -43,7 +43,10 @@ openssl rand -base64 48      # => AUTH_SECRET
 | `DATABASE_URL` | `libsql://...turso.io` (من الخطوة 1) |
 | `DATABASE_AUTH_TOKEN` | توكن Turso |
 | `AUTH_SECRET` | السرّ المُولّد (الخطوة 2) |
-| `AI_API_KEY` | مفتاح المزوّد (OpenRouter/OpenAI…) |
+| `ANTHROPIC_API_KEY` | مفتاح Anthropic (من console.anthropic.com). لو موجود، Claude يُجرَّب **أولاً** |
+| `ANTHROPIC_MODEL` | اختياري — الافتراضي `claude-haiku-5-5`. ضع `claude-sonnet-5-5` لتفكير أدق بسعر أعلى |
+| `ANTHROPIC_EFFORT` | اختياري — عمق التفكير: `low` أو `medium` (الافتراضي) أو `high` |
+| `AI_API_KEY` | مفتاح OpenRouter: احتياطي لو Claude فشل، ومصدر الـ embeddings المجانية (Anthropic ليس لديها embeddings) |
 | `AI_BASE_URL` | `https://openrouter.ai/api/v1` |
 | `AI_MODEL` | اختياري — اتركه فارغاً. لو ضبطته يُجرَّب أولاً ثم تُضاف السلسلة الافتراضية بعده تلقائياً، فلا يوقف موديلٌ أُلغي الموقعَ |
 | `AI_MAX_TOKENS` | `1500` |
@@ -52,7 +55,7 @@ openssl rand -base64 48      # => AUTH_SECRET
 | `AI_RATE_LIMIT_PER_HOUR` | *(اختياري)* عدد التفاسير لكل مستخدم في الساعة — الافتراضي ٣٠، و`0` يعطّل الحدّ |
 | `ADMIN_EMAILS` | *(اختياري)* إيميلك للوصول للوحة `/admin` (عرض وإدارة كل المستخدمين) |
 
-> بدون `AI_API_KEY` يعمل التطبيق بوضع fallback (استرجاع مباشر من المراجع).
+> بدون `ANTHROPIC_API_KEY` ولا `AI_API_KEY` يعمل التطبيق بوضع fallback (استرجاع مباشر من المراجع).
 > الاسترجاع الدلالي يعمل تلقائياً مع OpenRouter (المتجهات مُضمّنة في الريبو)؛
 > `AI_EMBED_MODEL=off` يُبقي الاسترجاع لفظياً ومحلياً بالكامل.
 

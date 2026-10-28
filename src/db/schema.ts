@@ -7,6 +7,11 @@ export const users = sqliteTable("users", {
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
   passwordHash: text("password_hash").notNull(),
+  // The dashboard's AI overview, kept with a fingerprint of the dream list it
+  // was written from, so opening the dashboard doesn't pay for a new one
+  // until the dreams actually change.
+  overallSummary: text("overall_summary"),
+  overallSummaryKey: text("overall_summary_key"),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .default(sql`(unixepoch() * 1000)`),

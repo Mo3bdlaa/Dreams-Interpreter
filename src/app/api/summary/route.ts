@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { asc, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -59,7 +60,30 @@ export async function GET() {
     });
   }
 
-  const summary = await generateOverallSummary(digests);
+  // Reuse the stored overview while the dream list is unchanged — the
+  // dashboard is opened far more often than dreams are added.
+  const key = createHash("sha256").update(JSON.stringify(digests)).digest("hex");
+  const [user] = await db
+    .select({
+      overallSummary: schema.users.overallSummary,
+      overallSummaryKey: schema.users.overallSummaryKey,
+    })
+    .from(schema.users)
+    .where(eq(schema.users.id, session.userId));
+
+  let summary: string;
+  if (user?.overallSummary && user.overallSummaryKey === key) {
+    summary = user.overallSummary;
+  } else {
+    const generated = await generateOverallSummary(digests);
+    summary = generated.summary;
+    if (generated.fromAI) {
+      await db
+        .update(schema.users)
+        .set({ overallSummary: summary, overallSummaryKey: key })
+        .where(eq(schema.users.id, session.userId));
+    }
+  }
 
   return NextResponse.json({
     total: dreams.length,

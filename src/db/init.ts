@@ -11,6 +11,8 @@ const STATEMENTS = [
     email TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
+    overall_summary TEXT,
+    overall_summary_key TEXT,
     created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   )`,
   `CREATE TABLE IF NOT EXISTS dreams (
@@ -59,6 +61,8 @@ const ADD_COLUMNS = [
   "ALTER TABLE dreams ADD COLUMN kind TEXT",
   "ALTER TABLE dreams ADD COLUMN share_token TEXT",
   "ALTER TABLE dreams ADD COLUMN deleted_at INTEGER",
+  "ALTER TABLE users ADD COLUMN overall_summary TEXT",
+  "ALTER TABLE users ADD COLUMN overall_summary_key TEXT",
 ];
 
 let initialized: Promise<void> | null = null;

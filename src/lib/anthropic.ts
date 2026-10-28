@@ -38,21 +38,47 @@ function getAnthropic(): Anthropic {
 }
 
 /**
- * System turns go to the top-level `system` field. The first one is the fixed
- * instruction prompt, so it carries the cache breakpoint; per-dream grounding
- * follows it uncached. No temperature: current Claude models reject sampling
+ * Lay the request out for prompt caching, most stable first:
+ *
+ *   1. system — the fixed instruction prompt (the first system turn). Same
+ *      bytes for every user and every dream, so one cache entry serves all
+ *      traffic; it carries breakpoint #1.
+ *   2. the conversation so far, with breakpoint #2 on the last assistant
+ *      reply — a follow-up in the same dream reads the whole earlier exchange
+ *      from cache.
+ *   3. the newest user turn, with this turn's grounding (any further system
+ *      turns) appended to it. Grounding changes every turn; anywhere earlier
+ *      it would invalidate everything after it, which is why it is not in
+ *      `system` here even though the OpenAI-compatible path sends it there.
+ *
+ * Prefixes under the model's minimum (512 tokens on current models) simply
+ * don't cache — no error, no write charge — so the short utility prompts are
+ * safe to mark too. No temperature: current Claude models reject sampling
  * parameters, and the prompt already steers toward grounded answers.
  */
-function buildParams(model: string, turns: ChatTurn[], maxTokens: number, effort: Effort) {
-  const systemTurns = turns.filter((t) => t.role === "system");
-  const system: Anthropic.TextBlockParam[] = systemTurns.map((t, i) => ({
-    type: "text",
-    text: t.content,
-    ...(i === 0 ? { cache_control: { type: "ephemeral" as const } } : {}),
-  }));
-  const messages: Anthropic.MessageParam[] = turns
-    .filter((t): t is ChatTurn & { role: "user" | "assistant" } => t.role !== "system")
-    .map((t) => ({ role: t.role, content: t.content }));
+export function buildParams(model: string, turns: ChatTurn[], maxTokens: number, effort: Effort) {
+  const [fixed, ...extraSystem] = turns.filter((t) => t.role === "system");
+  const system: Anthropic.TextBlockParam[] = fixed
+    ? [{ type: "text", text: fixed.content, cache_control: { type: "ephemeral" } }]
+    : [];
+
+  const convo = turns.filter(
+    (t): t is ChatTurn & { role: "user" | "assistant" } => t.role !== "system",
+  );
+  let lastAssistant = -1;
+  convo.forEach((t, i) => {
+    if (t.role === "assistant" && i < convo.length - 1) lastAssistant = i;
+  });
+
+  const messages: Anthropic.MessageParam[] = convo.map((t, i) => {
+    const blocks: Anthropic.TextBlockParam[] = [{ type: "text", text: t.content }];
+    if (i === lastAssistant) blocks[0].cache_control = { type: "ephemeral" };
+    if (i === convo.length - 1 && t.role === "user") {
+      for (const g of extraSystem) blocks.push({ type: "text", text: g.content });
+    }
+    return { role: t.role, content: blocks };
+  });
+
   return {
     model,
     max_tokens: maxTokens + THINKING_HEADROOM,
@@ -60,6 +86,14 @@ function buildParams(model: string, turns: ChatTurn[], maxTokens: number, effort
     messages,
     output_config: { effort },
   };
+}
+
+/** One line per call in the server log, so cache hits can be checked live. */
+function logUsage(model: string, usage: Anthropic.Usage) {
+  console.info(
+    `[claude] ${model} in=${usage.input_tokens} cache_read=${usage.cache_read_input_tokens ?? 0} ` +
+      `cache_write=${usage.cache_creation_input_tokens ?? 0} out=${usage.output_tokens}`,
+  );
 }
 
 class RefusalError extends Error {
@@ -76,6 +110,7 @@ export async function anthropicComplete(
   const response = await getAnthropic().messages.create(
     buildParams(model, turns, maxTokens, effort),
   );
+  logUsage(model, response.usage);
   if (response.stop_reason === "refusal") {
     throw new RefusalError(`${model} declined the request`);
   }
@@ -101,6 +136,7 @@ export async function* anthropicStream(
     }
   }
   const final = await stream.finalMessage();
+  logUsage(model, final.usage);
   if (final.stop_reason === "refusal") {
     throw new RefusalError(`${model} declined the request`);
   }

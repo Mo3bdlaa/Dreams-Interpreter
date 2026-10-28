@@ -568,12 +568,21 @@ export interface DreamDigest {
   excerpt: string;
 }
 
-/** Generate a reflective overall summary across all of a user's dreams. */
+/**
+ * Generate a reflective overall summary across all of a user's dreams.
+ * `fromAI` is false for the offline/empty texts, so callers only persist a
+ * summary the model actually wrote (a fallback cached during an outage would
+ * otherwise stick until the dreams change).
+ */
 export async function generateOverallSummary(
   dreams: DreamDigest[],
-): Promise<string> {
+): Promise<{ summary: string; fromAI: boolean }> {
   if (dreams.length === 0) {
-    return "لا توجد أحلام مسجّلة بعد. ابدأ بتسجيل أول حلم لتظهر هنا نظرة عامة على رحلتك مع الأحلام.";
+    return {
+      summary:
+        "لا توجد أحلام مسجّلة بعد. ابدأ بتسجيل أول حلم لتظهر هنا نظرة عامة على رحلتك مع الأحلام.",
+      fromAI: false,
+    };
   }
 
   const digest = dreams
@@ -586,7 +595,7 @@ export async function generateOverallSummary(
     .join("\n");
 
   if (!isAIConfigured()) {
-    return fallbackSummary(dreams);
+    return { summary: fallbackSummary(dreams), fromAI: false };
   }
 
   const summary = await chatComplete(
@@ -611,7 +620,9 @@ export async function generateOverallSummary(
     0.6,
   );
 
-  return summary || fallbackSummary(dreams);
+  return summary
+    ? { summary, fromAI: true }
+    : { summary: fallbackSummary(dreams), fromAI: false };
 }
 
 // ---------------------------------------------------------------------------
